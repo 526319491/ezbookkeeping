@@ -156,6 +156,7 @@ dist/
 ezbookkeeping
 !**/ezbookkeeping/
 /package/
+*.tar
 
 # Environment variable files
 .env
