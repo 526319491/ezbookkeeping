@@ -4,6 +4,7 @@ import { useI18n } from '@/locales/helpers.ts';
 
 import { useSettingsStore } from '@/stores/setting.ts';
 import { useTransactionCategoriesStore } from '@/stores/transactionCategory.ts';
+import { useBudgetStore } from '@/stores/budget.ts';
 import { useTransactionsStore } from '@/stores/transaction.ts';
 import { useStatisticsStore } from '@/stores/statistics.ts';
 import { useOverviewStore } from '@/stores/overview.ts';
@@ -21,13 +22,14 @@ import {
     isCategoryOrSubCategoriesAllChecked
 } from '@/lib/category.ts';
 
-export type CategoryFilterType = 'statisticsDefault' | 'statisticsCurrent' | 'homePageOverview' | 'transactionListCurrent' | 'custom';
+export type CategoryFilterType = 'statisticsDefault' | 'statisticsCurrent' | 'homePageOverview' | 'transactionListCurrent' | 'budgetPlanner' | 'custom';
 
 export function useCategoryFilterSettingPageBase(type?: CategoryFilterType, allowCategoryTypesStr?: string) {
     const { tt } = useI18n();
 
     const settingsStore = useSettingsStore();
     const transactionCategoriesStore = useTransactionCategoriesStore();
+    const budgetStore = useBudgetStore();
     const transactionsStore = useTransactionsStore();
     const statisticsStore = useStatisticsStore();
     const overviewStore = useOverviewStore();
@@ -140,6 +142,29 @@ export function useCategoryFilterSettingPageBase(type?: CategoryFilterType, allo
 
             filterCategoryIds.value = allCategoryIds;
             return true;
+        } else if (type === 'budgetPlanner') {
+            const includedCategoryIds = budgetStore.currentPlan.includedCategoryIds;
+
+            if (includedCategoryIds.length > 0) {
+                for (const categoryId of keys(allCategoryIds)) {
+                    allCategoryIds[categoryId] = true;
+                }
+
+                for (const categoryId of includedCategoryIds) {
+                    const category = transactionCategoriesStore.allTransactionCategoriesMap[categoryId];
+
+                    if (category && (!category.subCategories || !category.subCategories.length)) {
+                        allCategoryIds[category.id] = false;
+                    } else if (category) {
+                        selectAllSubCategories(allCategoryIds, false, category);
+                    } else {
+                        allCategoryIds[categoryId] = false;
+                    }
+                }
+            }
+
+            filterCategoryIds.value = allCategoryIds;
+            return true;
         } else if (type === 'custom') {
             if (selectedCategoryIds) {
                 for (const categoryId of selectedCategoryIds) {
@@ -204,6 +229,8 @@ export function useCategoryFilterSettingPageBase(type?: CategoryFilterType, allo
             if (changed) {
                 transactionsStore.updateTransactionListInvalidState(true);
             }
+        } else if (type === 'budgetPlanner') {
+            budgetStore.setIncludedCategoryIds(isAllSelected ? [] : (selectedCategoryIds.length > 0 ? selectedCategoryIds : ['0']));
         }
 
         return [changed, selectedCategoryIds];

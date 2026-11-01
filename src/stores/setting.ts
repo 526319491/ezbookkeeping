@@ -386,6 +386,13 @@ export const useSettingsStore = defineStore('settings', () => {
         updateUserApplicationCloudSettingValue('showTagInInsightsExplorerPage', value);
     }
 
+    // Budget Planner Page
+    function setBudgetPlannerData(value: string): void {
+        updateApplicationSettingsValue('budgetPlannerData', value);
+        appSettings.value.budgetPlannerData = value;
+        updateUserApplicationCloudSettingValue('budgetPlannerData', value);
+    }
+
     // Account List Page
     function setTotalAmountExcludeAccountIds(value: Record<string, boolean>): void {
         updateApplicationSettingsValue('totalAmountExcludeAccountIds', value);
@@ -677,6 +684,8 @@ export const useSettingsStore = defineStore('settings', () => {
         // -- Insights Explorer Page
         setInsightsExplorerDefaultDateRangeType,
         setShowTagInInsightsExplorerPage,
+        // -- Budget Planner Page
+        setBudgetPlannerData,
         // -- Account List Page
         setTotalAmountExcludeAccountIds,
         setHideCategoriesWithoutAccounts,

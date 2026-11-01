@@ -1,0 +1,16 @@
+node_modules
+dist
+data
+storage
+log
+package
+ezbookkeeping
+ezbookkeeping.exe
+*.exe
+*.out
+*.test
+.DS_Store
+Thumbs.db
+.vscode
+.idea
+.tmp-*

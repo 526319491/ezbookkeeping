@@ -84,6 +84,8 @@ export interface ApplicationSettings extends BaseApplicationSetting {
     // Insights Explorer Page
     insightsExplorerDefaultDateRangeType: number;
     showTagInInsightsExplorerPage: boolean;
+    // Budget Planner Page
+    budgetPlannerData: string;
     // Account List Page
     totalAmountExcludeAccountIds: Record<string, boolean>;
     hideCategoriesWithoutAccounts: boolean;
@@ -181,6 +183,8 @@ export const ALL_ALLOWED_CLOUD_SYNC_APP_SETTING_KEY_TYPES: Record<string, UserAp
     // Insights Explorer Page
     'insightsExplorerDefaultDateRangeType': UserApplicationCloudSettingType.Number,
     'showTagInInsightsExplorerPage': UserApplicationCloudSettingType.Boolean,
+    // Budget Planner Page
+    'budgetPlannerData': UserApplicationCloudSettingType.String,
     // Account List Page
     'totalAmountExcludeAccountIds': UserApplicationCloudSettingType.StringBooleanMap,
     'hideCategoriesWithoutAccounts': UserApplicationCloudSettingType.Boolean,
@@ -258,6 +262,8 @@ export const DEFAULT_APPLICATION_SETTINGS: ApplicationSettings = {
     // Insights Explorer Page
     insightsExplorerDefaultDateRangeType: DEFAULT_TRANSACTION_EXPLORER_DATE_RANGE.type,
     showTagInInsightsExplorerPage: true,
+    // Budget Planner Page
+    budgetPlannerData: '',
     // Account List Page
     totalAmountExcludeAccountIds: {},
     hideCategoriesWithoutAccounts: false,

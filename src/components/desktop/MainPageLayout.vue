@@ -77,6 +77,17 @@
                                     </v-btn>
                                 </router-link>
 
+                                <router-link to="/budget/planner"
+                                             :aria-current="isTopNavigationActive('/budget/planner') ? 'page' : undefined">
+                                    <v-btn class="top-navigation-button ms-1" density="comfortable" variant="text"
+                                           :aria-label="tt('Budget Planner')" :icon="true"
+                                           :active="isTopNavigationActive('/budget/planner')"
+                                           :color="isTopNavigationActive('/budget/planner') ? 'primary' : 'default'">
+                                        <v-icon :icon="isTopNavigationActive('/budget/planner') ? mdiWallet : mdiWalletOutline" size="24" />
+                                        <v-tooltip activator="parent">{{ tt('Budget Planner') }}</v-tooltip>
+                                    </v-btn>
+                                </router-link>
+
                                 <router-link to="/account/list"
                                              :aria-current="isTopNavigationActive('/account/list') ? 'page' : undefined">
                                     <v-btn class="top-navigation-button ms-1" density="comfortable" variant="text"
@@ -212,6 +223,8 @@ import {
     mdiChartPieOutline,
     mdiCompass,
     mdiCompassOutline,
+    mdiWallet,
+    mdiWalletOutline,
     mdiPlus,
     mdiCellphone,
     mdiThemeLightDark,

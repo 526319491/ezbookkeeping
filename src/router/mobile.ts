@@ -19,6 +19,8 @@ import AccountMoveAllTransactionsPage from '@/views/mobile/accounts/MoveAllTrans
 import StatisticsTransactionPage from '@/views/mobile/statistics/TransactionPage.vue';
 import StatisticsSettingsPage from '@/views/mobile/statistics/SettingsPage.vue';
 
+import BudgetPlannerPage from '@/views/mobile/budget/PlannerPage.vue';
+
 import TextSizeSettingsPage from '@/views/mobile/settings/TextSizeSettingsPage.vue';
 import PreferencesSettingsPage from '@/views/mobile/settings/PreferencesSettingsPage.vue';
 import OverviewLayoutEditorPage from '@/views/mobile/overview/LayoutEditorPage.vue';
@@ -211,6 +213,11 @@ const routes: Router.RouteParameters[] = [
     {
         path: '/statistic/transaction',
         async: asyncResolve(StatisticsTransactionPage),
+        beforeEnter: [checkLogin]
+    },
+    {
+        path: '/budget/planner',
+        async: asyncResolve(BudgetPlannerPage),
         beforeEnter: [checkLogin]
     },
     {

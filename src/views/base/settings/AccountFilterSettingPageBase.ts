@@ -2,6 +2,7 @@ import { type ComputedRef, ref, computed } from 'vue';
 
 import { useSettingsStore } from '@/stores/setting.ts';
 import { useAccountsStore } from '@/stores/account.ts';
+import { useBudgetStore } from '@/stores/budget.ts';
 import { useTransactionsStore } from '@/stores/transaction.ts';
 import { useStatisticsStore } from '@/stores/statistics.ts';
 import { useOverviewStore } from '@/stores/overview.ts';
@@ -15,11 +16,12 @@ import {
     isAccountOrSubAccountsAllChecked
 } from '@/lib/account.ts';
 
-export type AccountFilterType = 'statisticsDefault' | 'statisticsCurrent' | 'homePageOverview' | 'transactionListCurrent' | 'accountListTotalAmount' | 'custom';
+export type AccountFilterType = 'statisticsDefault' | 'statisticsCurrent' | 'homePageOverview' | 'transactionListCurrent' | 'accountListTotalAmount' | 'budgetPlanner' | 'custom';
 
 export function useAccountFilterSettingPageBase(type: AccountFilterType, disableHiddenAccount: ComputedRef<boolean | undefined>) {
     const settingsStore = useSettingsStore();
     const accountsStore = useAccountsStore();
+    const budgetStore = useBudgetStore();
     const transactionsStore = useTransactionsStore();
     const statisticsStore = useStatisticsStore();
     const overviewStore = useOverviewStore();
@@ -50,7 +52,7 @@ export function useAccountFilterSettingPageBase(type: AccountFilterType, disable
             return false;
         }
 
-        return type === 'statisticsDefault' || type === 'statisticsCurrent' || type === 'homePageOverview' || type === 'transactionListCurrent' || type === 'custom';
+        return type === 'statisticsDefault' || type === 'statisticsCurrent' || type === 'homePageOverview' || type === 'transactionListCurrent' || type === 'budgetPlanner' || type === 'custom';
     });
 
     const customAccountCategoryOrder = computed<string>(() => settingsStore.appSettings.accountCategoryOrders);
@@ -126,6 +128,27 @@ export function useAccountFilterSettingPageBase(type: AccountFilterType, disable
         } else if (type === 'accountListTotalAmount') {
             filterAccountIds.value = Object.assign(allAccountIds, settingsStore.appSettings.totalAmountExcludeAccountIds);
             return true;
+        } else if (type === 'budgetPlanner') {
+            const includedAccountIds = budgetStore.currentPlan.includedAccountIds;
+
+            if (includedAccountIds.length > 0) {
+                for (const accountId of keys(allAccountIds)) {
+                    allAccountIds[accountId] = true;
+                }
+
+                for (const accountId of includedAccountIds) {
+                    const account = accountsStore.allAccountsMap[accountId];
+
+                    if (account) {
+                        selectAccountOrSubAccounts(allAccountIds, account, false);
+                    } else {
+                        allAccountIds[accountId] = false;
+                    }
+                }
+            }
+
+            filterAccountIds.value = allAccountIds;
+            return true;
         } else if (type === 'custom') {
             if (selectedAccountIds) {
                 for (const accountId of selectedAccountIds) {
@@ -194,6 +217,8 @@ export function useAccountFilterSettingPageBase(type: AccountFilterType, disable
             }
         } else if (type === 'accountListTotalAmount') {
             settingsStore.setTotalAmountExcludeAccountIds(filteredAccountIds);
+        } else if (type === 'budgetPlanner') {
+            budgetStore.setIncludedAccountIds(isAllSelected ? [] : (selectedAccountIds.length > 0 ? selectedAccountIds : ['0']));
         }
 
         return [changed, selectedAccountIds];
