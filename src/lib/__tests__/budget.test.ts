@@ -8,7 +8,7 @@ import {
     buildBudgetMonthSummary,
     createDefaultBudgetMonthPlan,
     getBudgetExcludedIds,
-    getBudgetFixedExpenseAmount,
+    getBudgetFixedExpenseDaySummaries,
     parseBudgetPlannerData,
     serializeBudgetPlannerData,
 } from '@/lib/budget.ts';
@@ -20,7 +20,7 @@ function createPlan(overrides?: Partial<BudgetMonthPlan>): BudgetMonthPlan {
     };
 }
 
-describe('getBudgetFixedExpenseAmount', () => {
+describe('getBudgetFixedExpenseDaySummaries', () => {
     const plan = createPlan({
         fixedExpenses: [
             {
@@ -29,6 +29,7 @@ describe('getBudgetFixedExpenseAmount', () => {
                 amount: '20',
                 weekdays: [1, 2, 3, 4, 5],
                 enabled: true,
+                includeInRemaining: true,
             },
             {
                 id: 'breakfast',
@@ -36,6 +37,7 @@ describe('getBudgetFixedExpenseAmount', () => {
                 amount: '8',
                 weekdays: [0, 6],
                 enabled: true,
+                includeInRemaining: true,
             },
             {
                 id: 'disabled',
@@ -43,34 +45,54 @@ describe('getBudgetFixedExpenseAmount', () => {
                 amount: '100',
                 weekdays: [1, 2, 3, 4, 5, 6, 0],
                 enabled: false,
+                includeInRemaining: true,
             },
         ],
     });
 
     it('returns weekday fixed expenses on a weekday', () => {
-        expect(getBudgetFixedExpenseAmount(plan, 1).toString()).toBe('20');
+        const fixedExpenses = getBudgetFixedExpenseDaySummaries(plan, '2026-11-02', 1);
+
+        expect(fixedExpenses).toHaveLength(1);
+        expect(fixedExpenses[0]?.id).toBe('lunch');
+        expect(fixedExpenses[0]?.amount).toBe('20');
     });
 
     it('returns weekend fixed expenses on a weekend', () => {
-        expect(getBudgetFixedExpenseAmount(plan, 6).toString()).toBe('8');
+        const fixedExpenses = getBudgetFixedExpenseDaySummaries(plan, '2026-11-01', 0);
+
+        expect(fixedExpenses).toHaveLength(1);
+        expect(fixedExpenses[0]?.id).toBe('breakfast');
+    });
+
+    it('uses the per-day amount override', () => {
+        const fixedExpenses = getBudgetFixedExpenseDaySummaries(createPlan({
+            ...plan,
+            fixedExpenseDailyStates: {
+                '2026-11-02': {
+                    lunch: { amount: '25' },
+                },
+            },
+        }), '2026-11-02', 1);
+
+        expect(fixedExpenses[0]?.amount).toBe('25');
     });
 });
 
 describe('buildBudgetMonthSummary', () => {
-    it('uses a stable daily budget when there is no spending', () => {
+    it('updates the daily budget with the remaining days when there is no spending', () => {
         const summary = buildBudgetMonthSummary(createPlan({ monthlyBudget: '3000' }), {}, '2026-11', '2026-11-01');
 
         expect(summary.daysInMonth).toBe(30);
         expect(summary.monthSpent).toBe('0');
         expect(summary.monthRemaining).toBe('3000');
         expect(summary.idealToday).toBe('100');
-        expect(summary.days[0]?.idealTotalAmount).toBe('100');
-        expect(summary.days[1]?.idealTotalAmount).toBe('100');
-        expect(summary.days[1]?.suggestedAmount).toBe('100');
+        expect(summary.days[0]?.dailyBudgetAmount).toBe('100');
+        expect(summary.days[1]?.dailyBudgetAmount).toBe('103.44');
         expect(summary.days[0]?.status).toBe(BudgetDayStatus.NoData);
     });
 
-    it('marks an overspent day and reduces the next day suggested amount', () => {
+    it('marks an overspent day and reduces the next day daily budget', () => {
         const summary = buildBudgetMonthSummary(
             createPlan({ monthlyBudget: '3000' }),
             { '2026-11-01': '150' },
@@ -79,51 +101,211 @@ describe('buildBudgetMonthSummary', () => {
         );
 
         expect(summary.days[0]?.actualAmount).toBe('150');
-        expect(summary.days[0]?.deltaAmount).toBe('50');
+        expect(summary.days[0]?.usedAmount).toBe('150');
+        expect(summary.days[0]?.usagePercent).toBe(150);
+        expect(summary.days[0]?.remainingAmount).toBe('-50');
         expect(summary.days[0]?.status).toBe(BudgetDayStatus.Overspent);
-        expect(summary.days[0]?.idealTotalAmount).toBe('100');
-        expect(summary.days[1]?.idealTotalAmount).toBe('100');
-        expect(summary.days[1]?.suggestedAmount).toBe('98.27');
+        expect(summary.days[1]?.dailyBudgetAmount).toBe('98.27');
         expect(summary.idealToday).toBe('98.27');
-        expect(summary.overspentDays).toBe(1);
         expect(summary.monthSpent).toBe('150');
+        expect(summary.monthRemaining).toBe('2850');
     });
 
     it('uses the account balance as the current remaining living allowance', () => {
         const summary = buildBudgetMonthSummary(
-            createPlan({ useAccountBalance: true }),
+            createPlan(),
             { '2026-11-01': '2000' },
             '2026-11',
             '2026-11-01',
-            '150000'
+            '148000'
         );
 
         expect(summary.monthlyBudget).toBe('150000');
         expect(summary.monthSpent).toBe('2000');
-        expect(summary.monthRemaining).toBe('150000');
-        expect(summary.days[0]?.idealTotalAmount).toBe('5000');
-        expect(summary.days[0]?.suggestedAmount).toBe('5000');
+        expect(summary.monthUsed).toBe('2000');
+        expect(summary.monthRemaining).toBe('148000');
+        expect(summary.days[0]?.dailyBudgetAmount).toBe('5000');
         expect(summary.days[0]?.actualAmount).toBe('2000');
         expect(summary.days[0]?.status).toBe(BudgetDayStatus.Under);
-        expect(summary.days[1]?.idealTotalAmount).toBe('5000');
     });
 
-    it('lets manual actual spending override transaction amounts', () => {
+    it('does not apply fixed expenses to past days', () => {
         const summary = buildBudgetMonthSummary(
             createPlan({
                 monthlyBudget: '3000',
-                manualDailyActuals: {
-                    '2026-11-01': '30',
+                includeFixedExpensesInRemaining: true,
+                fixedExpenses: [
+                    {
+                        id: 'lunch',
+                        name: 'Lunch',
+                        amount: '20',
+                        weekdays: [1, 2],
+                        enabled: true,
+                        includeInRemaining: true,
+                    },
+                ],
+            }),
+            {},
+            '2026-11',
+            '2026-11-03'
+        );
+
+        expect(summary.days[1]?.date).toBe('2026-11-02');
+        expect(summary.days[1]?.fixedAmount).toBe('20');
+        expect(summary.days[1]?.remainingAmount).toBe('103.44');
+        expect(summary.days[2]?.date).toBe('2026-11-03');
+        expect(summary.days[2]?.fixedAmount).toBe('20');
+        expect(summary.days[2]?.remainingAmount).toBe('87.14');
+    });
+
+    it('includes fixed expenses in remaining when the switch is enabled', () => {
+        const summary = buildBudgetMonthSummary(
+            createPlan({
+                monthlyBudget: '3000',
+                includeFixedExpensesInRemaining: true,
+                fixedExpenses: [
+                    {
+                        id: 'lunch',
+                        name: 'Lunch',
+                        amount: '20',
+                        weekdays: [1],
+                        enabled: true,
+                        includeInRemaining: true,
+                    },
+                ],
+            }),
+            {},
+            '2026-11',
+            '2026-11-02'
+        );
+
+        expect(summary.days[1]?.fixedAmount).toBe('20');
+        expect(summary.days[1]?.usedAmount).toBe('0');
+        expect(summary.days[1]?.remainingAmount).toBe('83.44');
+        expect(summary.days[1]?.dailyBudgetAmount).toBe('103.44');
+        expect(summary.days[1]?.usagePercent).toBe(0);
+    });
+
+    it('excludes fixed expense items with the item switch disabled', () => {
+        const summary = buildBudgetMonthSummary(
+            createPlan({
+                monthlyBudget: '3000',
+                includeFixedExpensesInRemaining: true,
+                fixedExpenses: [
+                    {
+                        id: 'lunch',
+                        name: 'Lunch',
+                        amount: '20',
+                        weekdays: [1],
+                        enabled: true,
+                        includeInRemaining: false,
+                    },
+                ],
+            }),
+            {},
+            '2026-11',
+            '2026-11-02'
+        );
+
+        expect(summary.days[1]?.fixedAmount).toBe('20');
+        expect(summary.days[1]?.includedFixedAmount).toBe('0');
+        expect(summary.days[1]?.remainingAmount).toBe('103.44');
+    });
+
+    it('excludes fixed expenses from remaining when the switch is disabled', () => {
+        const summary = buildBudgetMonthSummary(
+            createPlan({
+                monthlyBudget: '3000',
+                includeFixedExpensesInRemaining: false,
+                fixedExpenses: [
+                    {
+                        id: 'lunch',
+                        name: 'Lunch',
+                        amount: '20',
+                        weekdays: [1],
+                        enabled: true,
+                        includeInRemaining: true,
+                    },
+                ],
+            }),
+            {},
+            '2026-11',
+            '2026-11-02'
+        );
+
+        expect(summary.days[1]?.fixedAmount).toBe('20');
+        expect(summary.days[1]?.usedAmount).toBe('0');
+        expect(summary.days[1]?.remainingAmount).toBe('103.44');
+    });
+
+    it('uses the per-day fixed expense amount', () => {
+        const summary = buildBudgetMonthSummary(
+            createPlan({
+                monthlyBudget: '3000',
+                includeFixedExpensesInRemaining: true,
+                fixedExpenses: [
+                    {
+                        id: 'lunch',
+                        name: 'Lunch',
+                        amount: '20',
+                        weekdays: [1],
+                        enabled: true,
+                        includeInRemaining: true,
+                    },
+                ],
+                fixedExpenseDailyStates: {
+                    '2026-11-02': {
+                        lunch: { amount: '25' },
+                    },
                 },
             }),
+            {},
+            '2026-11',
+            '2026-11-02'
+        );
+
+        expect(summary.days[1]?.fixedAmount).toBe('25');
+        expect(summary.days[1]?.usedAmount).toBe('0');
+        expect(summary.days[1]?.remainingAmount).toBe('78.44');
+    });
+
+    it('does not include fixed expenses in used amount', () => {
+        const summary = buildBudgetMonthSummary(
+            createPlan({
+                monthlyBudget: '3000',
+                includeFixedExpensesInRemaining: true,
+                fixedExpenses: [
+                    {
+                        id: 'lunch',
+                        name: 'Lunch',
+                        amount: '20',
+                        weekdays: [1],
+                        enabled: true,
+                        includeInRemaining: true,
+                    },
+                ],
+            }),
+            { '2026-11-02': '35' },
+            '2026-11',
+            '2026-11-02'
+        );
+
+        expect(summary.days[1]?.actualAmount).toBe('35');
+        expect(summary.days[1]?.usedAmount).toBe('35');
+        expect(summary.days[1]?.remainingAmount).toBe('48.44');
+    });
+
+    it('uses only transaction amounts for the actual spending', () => {
+        const summary = buildBudgetMonthSummary(
+            createPlan({ monthlyBudget: '3000' }),
             { '2026-11-01': '120' },
             '2026-11',
             '2026-11-01'
         );
 
-        expect(summary.days[0]?.actualAmount).toBe('30');
-        expect(summary.days[0]?.isManualActual).toBe(true);
-        expect(summary.days[0]?.status).toBe(BudgetDayStatus.Under);
+        expect(summary.days[0]?.actualAmount).toBe('120');
+        expect(summary.days[0]?.usedAmount).toBe('120');
+        expect(summary.days[0]?.status).toBe(BudgetDayStatus.Overspent);
     });
 
     it('handles leap year February', () => {
@@ -153,6 +335,8 @@ describe('budget planner data parsing', () => {
                 '2026-11': {
                     monthlyBudget: '3000',
                     currency: 'CNY',
+                    useAccountBalance: false,
+                    includeFixedExpensesInRemaining: false,
                     fixedExpenses: [
                         {
                             id: 'lunch',
@@ -160,8 +344,16 @@ describe('budget planner data parsing', () => {
                             amount: '20',
                             weekdays: [1, 2, 3, 4, 5],
                             enabled: true,
+                            includeInRemaining: true,
                         },
                     ],
+                    fixedExpenseDailyStates: {
+                        '2026-11-02': {
+                            lunch: {
+                                amount: '25',
+                            },
+                        },
+                    },
                     includedAccountIds: ['1'],
                     includedCategoryIds: [],
                     useTransactionTimezone: false,
@@ -173,8 +365,14 @@ describe('budget planner data parsing', () => {
         }), 'CNY');
 
         expect(parsed.months['2026-11']?.monthlyBudget).toBe('3000');
+        expect(parsed.months['2026-11']?.includeFixedExpensesInRemaining).toBe(false);
         expect(parsed.months['2026-11']?.fixedExpenses[0]?.amount).toBe('20');
-        expect(parsed.months['2026-11']?.manualDailyActuals['2026-11-01']).toBe('35');
+        expect(parsed.months['2026-11']?.fixedExpenseDailyStates['2026-11-02']?.['lunch']?.amount).toBe('25');
+
+        const parsedMonth = parsed.months['2026-11'] as unknown as Record<string, unknown>;
+        expect(parsed.version).toBe(2);
+        expect(parsedMonth['useAccountBalance']).toBeUndefined();
+        expect(parsedMonth['manualDailyActuals']).toBeUndefined();
 
         const serialized = serializeBudgetPlannerData(parsed);
         const reparsed = parseBudgetPlannerData(serialized, 'CNY');

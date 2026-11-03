@@ -1,0 +1,6 @@
+docker build --platform linux/amd64 `
+  --build-arg BUILD_PIPELINE=1 `
+  --build-arg BUILD_NODE_OPTIONS="--max-old-space-size=4096" `
+  -t ezbookkeeping:local-20261103 .
+
+docker save ezbookkeeping:local-20261103 -o .\ezbookkeeping-local-20261103.tar

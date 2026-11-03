@@ -3079,5 +3079,9 @@
     "No Fixed Expenses": "No Fixed Expenses",
     "View All": "View All",
     "Budget Usage": "Budget Usage",
-    "Select Accounts": "Select Accounts"
+    "Select Accounts": "Select Accounts",
+    "Used": "Used",
+    "Recorded": "Recorded",
+    "Not Recorded": "Not Recorded",
+    "Include in Remaining": "Include in Remaining"
 }

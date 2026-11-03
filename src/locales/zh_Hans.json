@@ -3079,5 +3079,9 @@
     "No Fixed Expenses": "暂无固定开支",
     "View All": "查看全部",
     "Budget Usage": "预算使用",
-    "Select Accounts": "选择账户"
+    "Select Accounts": "选择账户",
+    "Used": "已用",
+    "Recorded": "已记账",
+    "Not Recorded": "未记账",
+    "Include in Remaining": "计入剩余"
 }

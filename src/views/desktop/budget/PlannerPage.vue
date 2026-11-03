@@ -120,13 +120,24 @@
                                     <div class="budget-calendar-day-cell" :key="day?.date ?? 'empty-' + weekIndex + '-' + dayIndex"
                                          v-for="(day, dayIndex) in week">
                                         <div class="budget-calendar-day"
-                                             :class="day ? ['budget-day-' + day.status, { 'budget-day-today': isToday(day.date), 'budget-day-empty': !day.hasActualData && day.status !== dayStatusFuture }] : 'budget-day-placeholder'"
+                                             :class="day ? ['budget-day-' + day.status, { 'budget-day-today': isToday(day.date), 'budget-day-empty': !day.hasActualData && day.fixedExpenses.length < 1 && day.status !== dayStatusFuture }] : 'budget-day-placeholder'"
                                              v-if="day"
                                              @click="openDayDialog(day)">
-                                            <span class="budget-calendar-day-number">{{ formatNumber(day.day) }}</span>
-                                            <span class="budget-calendar-day-amount" v-if="day.hasActualData">{{ formatAmount(day.actualAmount, false) }}</span>
-                                            <span class="budget-calendar-day-limit">{{ tt('Daily Budget') }} {{ formatAmount(day.idealTotalAmount, false) }}</span>
-                                            <span class="budget-calendar-day-status">{{ getDayStatusText(day.status) }}</span>
+                                            <span class="budget-calendar-day-badge">{{ formatNumber(day.day) }}</span>
+                                            <div class="budget-calendar-day-remaining" :class="getDayRemainingClass(day)">
+                                                {{ formatAmount(day.remainingAmount) }}
+                                            </div>
+                                            <small class="budget-calendar-day-remaining-label">{{ tt('Remaining') }}</small>
+                                            <div class="budget-calendar-day-meta">
+                                                <span>{{ tt('Used') }} {{ formatAmount(day.usedAmount, false) }} / {{ formatAmount(day.dailyBudgetAmount, false) }}</span>
+                                                <b>{{ formatPercent(day.usagePercent) }}</b>
+                                            </div>
+                                            <v-progress-linear class="budget-calendar-day-progress" rounded height="5"
+                                                               :model-value="Math.min(100, day.usagePercent)"
+                                                               :color="getDayProgressColor(day)" />
+                                            <div class="budget-calendar-day-fixed" :class="{ 'budget-fixed-excluded': !plan.includeFixedExpensesInRemaining || day.includedFixedAmount === '0' }" v-if="day.fixedAmount !== '0' && day.date >= today">
+                                                <span>{{ tt('Fixed Expenses') }} {{ formatAmount(day.fixedAmount, false) }}</span>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -142,29 +153,6 @@
                         <span>{{ tt('Budget Plan Settings') }}</span>
                     </template>
                     <v-card-text>
-                        <div class="d-flex align-center flex-wrap gap-3">
-                            <div class="text-body-medium">{{ tt('Monthly Living Allowance') }}</div>
-                            <v-switch class="ms-2" density="compact" hide-details
-                                      :label="tt('Use Account Balance as Living Allowance')"
-                                      :model-value="plan.useAccountBalance"
-                                      @update:model-value="onUseAccountBalanceChanged" />
-                        </div>
-                        <div class="d-flex align-center flex-wrap gap-2 mt-2" v-if="plan.useAccountBalance">
-                            <span class="text-body-large text-primary">{{ formatAmount(accountBalance) }}</span>
-                            <span class="text-body-medium text-medium-emphasis">{{ tt('Living Expense Balance') }}</span>
-                        </div>
-                        <div class="text-caption text-medium-emphasis mt-1" v-if="plan.useAccountBalance && !isAccountBalanceActive">
-                            {{ tt('Account Balance Only Applies to Current Month') }}
-                        </div>
-                        <div class="d-flex align-center flex-wrap gap-2 mt-2" v-if="!plan.useAccountBalance">
-                            <amount-input class="budget-amount-input" density="compact" :currency="currency"
-                                          v-model="budgetInput" />
-                            <v-btn color="primary" variant="tonal" @click="applyBudget">{{ tt('Apply') }}</v-btn>
-                            <span class="text-body-medium text-medium-emphasis">{{ currency }}</span>
-                        </div>
-
-                        <v-divider class="my-5" />
-
                         <div class="d-flex align-center flex-wrap gap-2 mb-3">
                             <span class="text-body-large">{{ tt('Fixed Daily Expenses') }}</span>
                             <v-spacer />
@@ -234,37 +222,86 @@
                 </v-card>
             </v-dialog>
 
-            <v-dialog v-model="showDayDialog" width="440">
+            <v-dialog v-model="showDayDialog" width="820">
                 <v-card v-if="selectedDay">
                     <template #title>
                         <span>{{ selectedDay.date }}</span>
                     </template>
                     <v-card-text>
-                        <div class="d-flex flex-wrap gap-3">
+                        <div class="d-flex flex-wrap gap-4">
                             <div>
                                 <span class="text-body-medium">{{ tt('Daily Budget') }}</span>
-                                <div class="text-body-large text-primary">{{ formatAmount(selectedDay.idealTotalAmount) }}</div>
+                                <div class="text-body-large text-primary">{{ formatAmount(selectedDay.dailyBudgetAmount) }}</div>
                             </div>
                             <div>
-                                <span class="text-body-medium">{{ tt('Suggested Daily Spending') }}</span>
-                                <div class="text-body-large text-primary">{{ formatAmount(selectedDay.suggestedAmount) }}</div>
+                                <span class="text-body-medium">{{ tt('Remaining') }}</span>
+                                <div class="text-body-large" :class="getDayRemainingClass(selectedDay)">{{ formatAmount(selectedDay.remainingAmount) }}</div>
                             </div>
                             <div>
                                 <span class="text-body-medium">{{ tt('Spent') }}</span>
                                 <div class="text-body-large">{{ formatAmount(selectedDay.actualAmount) }}</div>
                             </div>
-                            <div>
-                                <span class="text-body-medium">{{ tt('Status') }}</span>
-                                <div class="text-body-large">{{ getDayStatusText(selectedDay.status) }}</div>
+                        </div>
+
+                        <div class="mt-5" v-if="selectedDay.fixedExpenses.length > 0 && selectedDay.date >= today">
+                            <div class="text-body-large mb-2">{{ tt('Fixed Expenses') }}</div>
+                            <div class="budget-day-fixed-expense-row" :key="fixedExpense.id" v-for="fixedExpense in dayFixedExpenses">
+                                <span class="budget-day-fixed-expense-name text-truncate">{{ fixedExpense.name }}</span>
+                                <amount-input class="budget-day-fixed-expense-amount" density="compact" :currency="currency"
+                                              :model-value="toInputNumber(fixedExpense.amount)"
+                                              @update:model-value="setDayFixedExpenseAmount(selectedDay.date, fixedExpense.id, $event)" />
+                                <v-btn density="comfortable" color="default" variant="text"
+                                       :aria-label="tt('Reset')" :icon="true"
+                                       @click="clearDayFixedExpense(selectedDay.date, fixedExpense.id)">
+                                    <v-icon :icon="mdiRestore" size="20" />
+                                    <v-tooltip activator="parent">{{ tt('Reset') }}</v-tooltip>
+                                </v-btn>
                             </div>
                         </div>
 
-                        <div class="text-body-medium mt-5">{{ tt('Manual Actual Spending') }}</div>
-                        <amount-input class="mt-2" density="compact" :currency="currency" v-model="manualActualInput" />
-                        <div class="d-flex align-center mt-3">
-                            <v-btn color="primary" variant="tonal" @click="saveManualActual">{{ tt('Save') }}</v-btn>
-                            <v-btn class="ms-2" color="default" variant="text" v-if="getManualActual(selectedDay.date) !== null"
-                                   @click="clearManualActualForSelectedDay">{{ tt('Clear Override') }}</v-btn>
+                        <div class="mt-5">
+                            <div class="text-body-large mb-2">{{ tt('Transaction Details') }}</div>
+                            <div class="d-flex justify-center py-4" v-if="dayTransactionsLoading">
+                                <v-progress-circular indeterminate size="24" />
+                            </div>
+                            <div class="text-body-medium text-medium-emphasis" v-else-if="dayTransactionsError">
+                                {{ tt('Unable to retrieve budget data') }}
+                            </div>
+                            <div class="text-body-medium text-medium-emphasis" v-else-if="dayTransactions.length < 1">
+                                {{ tt('No transaction data') }}
+                            </div>
+                            <div class="budget-day-transaction-table-wrapper" v-else>
+                                <v-table class="budget-day-transaction-table" density="compact">
+                                    <thead>
+                                        <tr>
+                                            <th>{{ tt('Time') }}</th>
+                                            <th>{{ tt('Category') }}</th>
+                                            <th>{{ tt('Account') }}</th>
+                                            <th class="text-end">{{ tt('Amount') }}</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr :key="transaction.id" v-for="transaction in dayTransactions">
+                                            <td class="text-no-wrap">{{ formatTransactionTime(transaction) }}</td>
+                                            <td>
+                                                <div class="d-flex align-center">
+                                                    <item-icon v-if="transaction.categoryColor"
+                                                               :icon-type="getCategoryIconType(transaction.categoryIconType)"
+                                                               :icon-id="transaction.categoryIcon"
+                                                               :color="transaction.categoryColor"
+                                                               size="20px" />
+                                                    <div class="d-flex flex-column ms-1">
+                                                        <span>{{ transaction.categoryName || tt('None') }}</span>
+                                                        <small class="text-medium-emphasis" v-if="transaction.comment">{{ transaction.comment }}</small>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td>{{ transaction.accountName }}</td>
+                                            <td class="text-end text-no-wrap text-expense">{{ formatAmount(transaction.amount) }}</td>
+                                        </tr>
+                                    </tbody>
+                                </v-table>
+                            </div>
                         </div>
                     </v-card-text>
                     <v-card-actions>
@@ -292,15 +329,16 @@ import BudgetSidebar from '@/views/desktop/budget/BudgetSidebar.vue';
 import AccountFilterSettingsDialog from '@/views/desktop/common/dialogs/AccountFilterSettingsDialog.vue';
 import CategoryFilterSettingsDialog from '@/views/desktop/common/dialogs/CategoryFilterSettingsDialog.vue';
 
-import { computed, ref, watch } from 'vue';
+import { computed, ref } from 'vue';
 
 import { useI18n } from '@/locales/helpers.ts';
 import { useBudgetPlannerPageBase } from '@/views/base/budget/BudgetPlannerPageBase.ts';
 
-import { BudgetDayStatus, type BudgetDaySummary, type BudgetFixedExpense } from '@/core/budget.ts';
+import { BudgetDayStatus, type BudgetDaySummary, type BudgetFixedExpense, type BudgetFixedExpenseDaySummary } from '@/core/budget.ts';
 import type { WeekDayValue } from '@/core/datetime.ts';
 
 import { parseBudgetAmount } from '@/lib/budget.ts';
+import { getCategoryIconType } from '@/lib/icon.ts';
 import { isUserLogined, isUserUnlocked } from '@/lib/userstate.ts';
 
 import {
@@ -308,6 +346,7 @@ import {
     mdiChevronRight,
     mdiDeleteOutline,
     mdiRefresh,
+    mdiRestore,
 } from '@mdi/js';
 
 const { tt } = useI18n();
@@ -330,21 +369,24 @@ const {
     allWeekdays,
     includedAccountIds,
     includedCategoryIds,
+    dayTransactions,
+    dayTransactionsLoading,
+    dayTransactionsError,
     reload,
+    loadDayTransactions,
     changeMonth,
     goToCurrentMonth,
-    setMonthlyBudget,
-    setUseAccountBalance,
     setUseTransactionTimezone,
     addFixedExpense,
     updateFixedExpense,
     removeFixedExpense,
     toggleFixedExpenseEnabled,
-    setManualActual,
-    clearManualActual,
-    getManualActual,
+    setFixedExpenseDayAmount,
+    clearFixedExpenseDayState,
     formatAmount,
     formatNumber,
+    formatPercent,
+    formatTransactionTime,
     getDayStatusText,
     isToday,
 } = useBudgetPlannerPageBase();
@@ -355,9 +397,15 @@ const showPlanDialog = ref<boolean>(false);
 const showDayDialog = ref<boolean>(false);
 const showAccountFilterDialog = ref<boolean>(false);
 const showCategoryFilterDialog = ref<boolean>(false);
-const selectedDay = ref<BudgetDaySummary | null>(null);
-const budgetInput = ref<number>(0);
-const manualActualInput = ref<number>(0);
+const selectedDayDate = ref<string | null>(null);
+const selectedDay = computed<BudgetDaySummary | null>(() => {
+    if (!selectedDayDate.value) {
+        return null;
+    }
+
+    return days.value.find(day => day.date === selectedDayDate.value) ?? null;
+});
+const dayFixedExpenses = ref<BudgetFixedExpenseDaySummary[]>([]);
 const newFixedExpenseName = ref<string>('');
 const newFixedExpenseAmount = ref<number>(0);
 
@@ -438,12 +486,7 @@ function toInputNumber(value: string): number {
 }
 
 function openPlanSettings(): void {
-    budgetInput.value = parseBudgetAmount(plan.value.monthlyBudget).toDoubleNumber();
     showPlanDialog.value = true;
-}
-
-function applyBudget(): void {
-    setMonthlyBudget(budgetInput.value);
 }
 
 function addNewFixedExpense(): void {
@@ -469,35 +512,56 @@ function updateFixedExpenseWeekdays(expense: BudgetFixedExpense, weekdays: WeekD
 }
 
 function openDayDialog(day: BudgetDaySummary): void {
-    selectedDay.value = day;
-    manualActualInput.value = day.hasActualData ? parseBudgetAmount(day.actualAmount).toDoubleNumber() : 0;
+    selectedDayDate.value = day.date;
+    dayFixedExpenses.value = day.fixedExpenses.map(fixedExpense => ({ ...fixedExpense }));
+    loadDayTransactions(day.date);
     showDayDialog.value = true;
 }
 
-function saveManualActual(): void {
-    if (!selectedDay.value) {
-        return;
+function getDayProgressColor(day: BudgetDaySummary): string {
+    if (day.status === BudgetDayStatus.Future || day.status === BudgetDayStatus.NoData) {
+        return 'secondary';
+    } else if (day.status === BudgetDayStatus.Overspent) {
+        return 'error';
+    } else if (day.status === BudgetDayStatus.NearLimit) {
+        return 'warning';
+    } else {
+        return 'success';
     }
-
-    setManualActual(selectedDay.value.date, manualActualInput.value);
-    showDayDialog.value = false;
 }
 
-function clearManualActualForSelectedDay(): void {
-    if (!selectedDay.value) {
-        return;
-    }
+function getDayRemainingClass(day: BudgetDaySummary): string {
+    const remainingAmount = parseBudgetAmount(day.remainingAmount);
+    const dailyBudgetAmount = parseBudgetAmount(day.dailyBudgetAmount);
 
-    clearManualActual(selectedDay.value.date);
-    showDayDialog.value = false;
+    if (remainingAmount.isNegative()) {
+        return 'budget-amount-overspent';
+    } else if (day.status === BudgetDayStatus.Future) {
+        return 'budget-amount-future';
+    } else if (dailyBudgetAmount.greaterThan(0) && remainingAmount.lessThanOrEqual(dailyBudgetAmount.multiply(0.1))) {
+        return 'budget-amount-near_limit';
+    } else {
+        return 'budget-amount-under';
+    }
+}
+
+function setDayFixedExpenseAmount(date: string, expenseId: string, amount: number): void {
+    dayFixedExpenses.value = dayFixedExpenses.value.map(fixedExpense => fixedExpense.id === expenseId
+        ? { ...fixedExpense, amount: amount.toString() }
+        : fixedExpense);
+    setFixedExpenseDayAmount(date, expenseId, amount);
+}
+
+function clearDayFixedExpense(date: string, expenseId: string): void {
+    const defaultExpense = plan.value.fixedExpenses.find(fixedExpense => fixedExpense.id === expenseId);
+    dayFixedExpenses.value = dayFixedExpenses.value.map(fixedExpense => fixedExpense.id === expenseId
+        ? { ...fixedExpense, amount: defaultExpense?.amount ?? '0' }
+        : fixedExpense);
+    clearFixedExpenseDayState(date, expenseId);
 }
 
 function onUseTransactionTimezoneChanged(value: boolean | null): void {
     setUseTransactionTimezone(!!value);
-}
-
-function onUseAccountBalanceChanged(value: boolean | null): void {
-    setUseAccountBalance(!!value);
 }
 
 function refreshBudget(): void {
@@ -519,12 +583,6 @@ function onCategoryFilterChanged(changed: boolean): void {
         reload(true).catch(() => undefined);
     }
 }
-
-watch(() => plan.value.monthlyBudget, value => {
-    if (!showPlanDialog.value) {
-        budgetInput.value = parseBudgetAmount(value).toDoubleNumber();
-    }
-});
 
 if (isUserLogined() && isUserUnlocked()) {
     reload().catch(() => undefined);
@@ -557,14 +615,15 @@ if (isUserLogined() && isUserUnlocked()) {
 }
 
 .budget-calendar-day-cell {
-    min-height: 100px;
+    min-height: 132px;
 }
 
 .budget-calendar-day {
+    position: relative;
     display: flex;
     flex-direction: column;
-    min-height: 100px;
-    padding: 8px;
+    min-height: 132px;
+    padding: 10px 8px 8px;
     border: 1px solid rgba(var(--v-theme-on-surface), 0.12);
     border-radius: 8px;
     cursor: pointer;
@@ -575,22 +634,82 @@ if (isUserLogined() && isUserUnlocked()) {
     border-color: rgb(var(--v-theme-primary));
 }
 
-.budget-calendar-day-number {
-    font-size: 0.875rem;
-    font-weight: 600;
-}
-
-.budget-calendar-day-amount {
-    margin-top: 4px;
-    font-size: 0.875rem;
-    font-weight: 600;
-}
-
-.budget-calendar-day-limit,
-.budget-calendar-day-status {
-    margin-top: 2px;
-    color: rgba(var(--v-theme-on-surface), 0.6);
+.budget-calendar-day-badge {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 4px;
+    border-radius: 10px;
+    background: rgba(var(--v-theme-primary), 0.12);
+    color: rgb(var(--v-theme-primary));
     font-size: 0.7rem;
+    font-weight: 700;
+    inset-block-start: 6px;
+    inset-inline-end: 6px;
+}
+
+.budget-calendar-day-remaining {
+    padding-inline-end: 24px;
+    font-size: 1.05rem;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.budget-calendar-day-remaining-label {
+    color: rgba(var(--v-theme-on-surface), 0.55);
+    font-size: 0.65rem;
+}
+
+.budget-calendar-day-meta {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 6px;
+    margin-top: 6px;
+    color: rgba(var(--v-theme-on-surface), 0.64);
+    font-size: 0.68rem;
+}
+
+.budget-calendar-day-meta b {
+    font-weight: 700;
+}
+
+.budget-calendar-day-progress {
+    margin-top: 4px;
+}
+
+.budget-calendar-day-fixed {
+    display: flex;
+    justify-content: space-between;
+    gap: 4px;
+    margin-top: 4px;
+    color: rgba(var(--v-theme-on-surface), 0.6);
+    font-size: 0.65rem;
+}
+
+.budget-calendar-day-fixed.budget-fixed-excluded {
+    text-decoration: line-through;
+    opacity: 0.7;
+}
+
+.budget-amount-overspent {
+    color: rgb(var(--v-theme-error));
+}
+
+.budget-amount-near_limit {
+    color: rgb(var(--v-theme-warning));
+}
+
+.budget-amount-under {
+    color: rgb(var(--v-theme-success));
+}
+
+.budget-amount-no_data,
+.budget-amount-future {
+    color: rgba(var(--v-theme-on-surface), 0.6);
 }
 
 .budget-calendar-day.budget-day-today {
@@ -622,7 +741,25 @@ if (isUserLogined() && isUserUnlocked()) {
 }
 
 .budget-calendar-day-placeholder {
-    min-height: 100px;
+    min-height: 132px;
+}
+
+.budget-day-fixed-expense-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+}
+
+.budget-day-fixed-expense-name {
+    min-width: 0;
+    flex: 1 1 160px;
+}
+
+.budget-day-fixed-expense-amount {
+    flex: 0 1 180px;
 }
 
 .budget-fixed-expense-list {
@@ -663,7 +800,12 @@ if (isUserLogined() && isUserUnlocked()) {
     border-top: 1px solid rgba(var(--v-theme-on-surface), 0.12);
 }
 
-.budget-amount-input {
-    max-width: 240px;
+.budget-day-transaction-table-wrapper {
+    max-height: 320px;
+    overflow-y: auto;
+}
+
+.budget-day-transaction-table {
+    font-size: 0.8125rem;
 }
 </style>

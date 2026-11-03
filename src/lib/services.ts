@@ -183,6 +183,10 @@ import type {
     UserApplicationCloudSettingsUpdateRequest
 } from '@/models/user_app_cloud_setting.ts';
 import type {
+    UserBudgetPlanResponse,
+    UserBudgetPlanUpdateRequest
+} from '@/models/user_budget_plan.ts';
+import type {
     RecognizedTransactionResponse,
     CodingAssistantRequest,
     CodingAssistantResponse
@@ -457,6 +461,12 @@ export default {
     },
     disableUserApplicationCloudSettings: (): ApiResponsePromise<boolean> => {
         return axios.post<ApiResponse<boolean>>('v1/users/settings/cloud/disable.json');
+    },
+    getUserBudgetPlan: (): ApiResponsePromise<UserBudgetPlanResponse | false> => {
+        return axios.get<ApiResponse<UserBudgetPlanResponse | false>>('v1/users/budget/plan.json');
+    },
+    updateUserBudgetPlan: (req: UserBudgetPlanUpdateRequest): ApiResponsePromise<boolean> => {
+        return axios.post<ApiResponse<boolean>>('v1/users/budget/plan.json', req);
     },
     get2FAStatus: (): ApiResponsePromise<TwoFactorStatusResponse> => {
         return axios.get<ApiResponse<TwoFactorStatusResponse>>('v1/users/2fa/status.json');

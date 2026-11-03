@@ -6,6 +6,8 @@ import {
     BudgetDayStatus,
     type BudgetDaySummary,
     type BudgetFixedExpense,
+    type BudgetFixedExpenseDayState,
+    type BudgetFixedExpenseDaySummary,
     type BudgetMonthPlan,
     type BudgetMonthSummary,
     type BudgetPlannerData,
@@ -57,12 +59,12 @@ export function createDefaultBudgetMonthPlan(currency: string): BudgetMonthPlan 
     return {
         monthlyBudget: '0',
         currency: currency,
-        useAccountBalance: true,
+        includeFixedExpensesInRemaining: true,
         fixedExpenses: [],
+        fixedExpenseDailyStates: {},
         includedAccountIds: [],
         includedCategoryIds: [],
         useTransactionTimezone: false,
-        manualDailyActuals: {},
     };
 }
 
@@ -70,18 +72,19 @@ export function cloneBudgetMonthPlan(plan: BudgetMonthPlan): BudgetMonthPlan {
     return {
         monthlyBudget: plan.monthlyBudget,
         currency: plan.currency,
-        useAccountBalance: plan.useAccountBalance,
+        includeFixedExpensesInRemaining: plan.includeFixedExpensesInRemaining,
         fixedExpenses: plan.fixedExpenses.map(expense => ({
             id: expense.id,
             name: expense.name,
             amount: expense.amount,
             weekdays: [...expense.weekdays],
             enabled: expense.enabled,
+            includeInRemaining: expense.includeInRemaining,
         })),
+        fixedExpenseDailyStates: cloneFixedExpenseDailyStates(plan.fixedExpenseDailyStates),
         includedAccountIds: [...plan.includedAccountIds],
         includedCategoryIds: [...plan.includedCategoryIds],
         useTransactionTimezone: plan.useTransactionTimezone,
-        manualDailyActuals: { ...plan.manualDailyActuals },
     };
 }
 
@@ -101,7 +104,7 @@ export function createInheritedBudgetMonthPlan(data: BudgetPlannerData, yearMont
     const clonedPlan = cloneBudgetMonthPlan(previousPlan);
     return {
         ...clonedPlan,
-        manualDailyActuals: {},
+        fixedExpenseDailyStates: {},
     };
 }
 
@@ -172,18 +175,25 @@ export function truncateBudgetAmount(value: BigDecimal): BigDecimal {
     return normalizedValue.multiply(BUDGET_AMOUNT_FACTOR).truncate().divide(BUDGET_AMOUNT_FACTOR);
 }
 
-export function getBudgetFixedExpenseAmount(plan: BudgetMonthPlan, weekday: WeekDayValue): BigDecimal {
-    let totalAmount = BIG_DECIMAL_ZERO;
+export function getBudgetFixedExpenseDaySummaries(plan: BudgetMonthPlan, date: string, weekday: WeekDayValue): BudgetFixedExpenseDaySummary[] {
+    const result: BudgetFixedExpenseDaySummary[] = [];
+    const dailyStates = plan.fixedExpenseDailyStates[date];
 
     for (const fixedExpense of plan.fixedExpenses) {
         if (!fixedExpense.enabled || !fixedExpense.weekdays.includes(weekday)) {
             continue;
         }
 
-        totalAmount = totalAmount.add(parseBudgetAmount(fixedExpense.amount));
+        const dailyState = dailyStates?.[fixedExpense.id];
+        result.push({
+            id: fixedExpense.id,
+            name: fixedExpense.name,
+            amount: dailyState?.amount ?? fixedExpense.amount,
+            includeInRemaining: fixedExpense.includeInRemaining,
+        });
     }
 
-    return truncateBudgetAmount(totalAmount);
+    return result;
 }
 
 export function buildBudgetMonthSummary(
@@ -196,31 +206,32 @@ export function buildBudgetMonthSummary(
     const parsedYearMonth = parseYearMonth(yearMonth);
 
     if (!parsedYearMonth) {
-        return {
-            yearMonth,
-            daysInMonth: 0,
-            elapsedDays: 0,
-            remainingDays: 0,
-            monthlyBudget: '0',
-            monthSpent: '0',
-            monthRemaining: '0',
-            fixedToday: '0',
-            idealToday: '0',
-            flexibleToday: '0',
-            actualToday: '0',
-            remainingToday: '0',
-            overspentDays: 0,
-            days: [],
-        };
+        return createEmptyBudgetMonthSummary(yearMonth);
     }
 
     const { year, month } = parsedYearMonth;
     const daysInMonth = new Date(year, month, 0).getDate();
-    const useAccountBalance = plan.useAccountBalance && accountBalance !== undefined && accountBalance !== null;
-    const monthlyBudget = useAccountBalance ? parseBudgetAmount(accountBalance) : parseBudgetAmount(plan.monthlyBudget);
-    const dailyBudgetAmount = truncateBudgetAmount(monthlyBudget.divide(daysInMonth));
+    const useAccountBalance = accountBalance !== undefined && accountBalance !== null;
+    const actualAmounts: Record<string, BigDecimal> = {};
+    const hasActualDataMap: Record<string, boolean> = {};
+    let totalActualSpent = BIG_DECIMAL_ZERO;
+
+    for (let day = 1; day <= daysInMonth; day++) {
+        const date = formatBudgetDate(year, month, day);
+        const dailyAmount = dailyExpenseAmounts[date];
+        const actualAmount = truncateBudgetAmount(parseBudgetAmount(dailyAmount));
+
+        actualAmounts[date] = actualAmount;
+        hasActualDataMap[date] = dailyAmount !== undefined;
+        totalActualSpent = totalActualSpent.add(actualAmount);
+    }
+
+    const monthlyBudget = useAccountBalance
+        ? parseBudgetAmount(accountBalance).add(totalActualSpent)
+        : parseBudgetAmount(plan.monthlyBudget);
     let remainingBudget = monthlyBudget;
     let monthSpent = BIG_DECIMAL_ZERO;
+    let monthUsed = BIG_DECIMAL_ZERO;
     let overspentDays = 0;
 
     const days: BudgetDaySummary[] = [];
@@ -229,23 +240,34 @@ export function buildBudgetMonthSummary(
         const date = formatBudgetDate(year, month, day);
         const weekday = new Date(year, month - 1, day).getDay() as WeekDayValue;
         const isFuture = date > today;
-        const fixedAmount = getBudgetFixedExpenseAmount(plan, weekday);
-        const manualAmount = plan.manualDailyActuals[date];
-        const dailyAmount = dailyExpenseAmounts[date];
-        const isManualActual = manualAmount !== undefined && manualAmount !== '';
-        const hasActualData = isManualActual || dailyAmount !== undefined;
-        const actualAmount = truncateBudgetAmount(parseBudgetAmount(isManualActual ? manualAmount : dailyAmount));
+        const fixedExpenses = getBudgetFixedExpenseDaySummaries(plan, date, weekday);
+        let fixedAmount = BIG_DECIMAL_ZERO;
+        let itemIncludedFixedAmount = BIG_DECIMAL_ZERO;
+
+        for (const fixedExpense of fixedExpenses) {
+            const amount = parseBudgetAmount(fixedExpense.amount);
+            fixedAmount = fixedAmount.add(amount);
+
+            if (fixedExpense.includeInRemaining) {
+                itemIncludedFixedAmount = itemIncludedFixedAmount.add(amount);
+            }
+        }
+
+        fixedAmount = truncateBudgetAmount(fixedAmount);
+        itemIncludedFixedAmount = truncateBudgetAmount(itemIncludedFixedAmount);
+        const actualAmount = actualAmounts[date] as BigDecimal;
+        const usedAmount = actualAmount;
+        const includedFixedAmount = plan.includeFixedExpensesInRemaining && date >= today ? itemIncludedFixedAmount : BIG_DECIMAL_ZERO;
         const daysLeft = daysInMonth - day + 1;
-        const remainingDailyAmount = remainingBudget.greaterThan(0)
+        const dailyBudgetAmount = remainingBudget.greaterThan(0)
             ? truncateBudgetAmount(remainingBudget.divide(daysLeft))
             : BIG_DECIMAL_ZERO;
-        const suggestedAmount = remainingDailyAmount.lessThan(dailyBudgetAmount) ? remainingDailyAmount : dailyBudgetAmount;
-        const flexibleAmount = dailyBudgetAmount.subtract(fixedAmount).greaterThan(0)
-            ? truncateBudgetAmount(dailyBudgetAmount.subtract(fixedAmount))
-            : BIG_DECIMAL_ZERO;
-        const deltaAmount = truncateBudgetAmount(actualAmount.subtract(dailyBudgetAmount));
-        const remainingAmount = truncateBudgetAmount(dailyBudgetAmount.subtract(actualAmount));
-        const status = getBudgetDayStatus(isFuture, hasActualData, actualAmount, dailyBudgetAmount, deltaAmount);
+        const remainingAmount = truncateBudgetAmount(dailyBudgetAmount.subtract(usedAmount).subtract(includedFixedAmount));
+        const usagePercent = dailyBudgetAmount.greaterThan(0)
+            ? Math.min(999, usedAmount.divide(dailyBudgetAmount).multiply(100).toDoubleNumber())
+            : (usedAmount.greaterThan(0) ? 100 : 0);
+        const hasActualData = hasActualDataMap[date] === true;
+        const status = getBudgetDayStatus(isFuture, hasActualData, usagePercent);
 
         if (status === BudgetDayStatus.Overspent) {
             overspentDays++;
@@ -256,22 +278,20 @@ export function buildBudgetMonthSummary(
             day,
             weekday,
             actualAmount: actualAmount.toString(),
-            idealTotalAmount: dailyBudgetAmount.toString(),
-            suggestedAmount: suggestedAmount.toString(),
+            dailyBudgetAmount: dailyBudgetAmount.toString(),
             fixedAmount: fixedAmount.toString(),
-            flexibleAmount: flexibleAmount.toString(),
+            includedFixedAmount: itemIncludedFixedAmount.toString(),
+            usedAmount: usedAmount.toString(),
             remainingAmount: remainingAmount.toString(),
-            deltaAmount: deltaAmount.toString(),
+            usagePercent,
+            fixedExpenses,
             hasActualData,
-            isManualActual,
             status,
         });
 
-        if (!useAccountBalance) {
-            remainingBudget = remainingBudget.subtract(actualAmount);
-        }
-
+        remainingBudget = remainingBudget.subtract(usedAmount).subtract(includedFixedAmount);
         monthSpent = monthSpent.add(actualAmount);
+        monthUsed = monthUsed.add(usedAmount);
     }
 
     const currentYearMonth = today.substring(0, 7);
@@ -286,12 +306,11 @@ export function buildBudgetMonthSummary(
     const focusDaySummary = days[Math.max(0, Math.min(focusDay - 1, days.length - 1))] as BudgetDaySummary;
     const elapsedDays = yearMonth === currentYearMonth ? focusDay : (yearMonth < currentYearMonth ? daysInMonth : 0);
     const remainingDays = yearMonth === currentYearMonth ? daysInMonth - focusDay + 1 : (yearMonth > currentYearMonth ? daysInMonth : 0);
-    const isCurrentMonth = yearMonth === currentYearMonth;
-    const suggestedTodayAmount = parseBudgetAmount(isCurrentMonth ? focusDaySummary.suggestedAmount : focusDaySummary.idealTotalAmount);
-    const fixedTodayAmount = parseBudgetAmount(focusDaySummary.fixedAmount);
-    const actualTodayAmount = parseBudgetAmount(focusDaySummary.actualAmount);
-    const flexibleTodayAmount = suggestedTodayAmount.subtract(fixedTodayAmount).greaterThan(0)
-        ? truncateBudgetAmount(suggestedTodayAmount.subtract(fixedTodayAmount))
+    const dailyBudgetToday = parseBudgetAmount(focusDaySummary.dailyBudgetAmount);
+    const itemIncludedFixedTodayAmount = parseBudgetAmount(focusDaySummary.includedFixedAmount);
+    const includedFixedTodayAmount = plan.includeFixedExpensesInRemaining ? itemIncludedFixedTodayAmount : BIG_DECIMAL_ZERO;
+    const flexibleTodayAmount = dailyBudgetToday.subtract(includedFixedTodayAmount).greaterThan(0)
+        ? truncateBudgetAmount(dailyBudgetToday.subtract(includedFixedTodayAmount))
         : BIG_DECIMAL_ZERO;
 
     return {
@@ -301,12 +320,14 @@ export function buildBudgetMonthSummary(
         remainingDays,
         monthlyBudget: truncateBudgetAmount(monthlyBudget).toString(),
         monthSpent: truncateBudgetAmount(monthSpent).toString(),
-        monthRemaining: truncateBudgetAmount(useAccountBalance ? monthlyBudget : monthlyBudget.subtract(monthSpent)).toString(),
+        monthUsed: truncateBudgetAmount(monthUsed).toString(),
+        monthRemaining: truncateBudgetAmount(remainingBudget).toString(),
         fixedToday: focusDaySummary.fixedAmount,
-        idealToday: truncateBudgetAmount(suggestedTodayAmount).toString(),
+        idealToday: focusDaySummary.dailyBudgetAmount,
         flexibleToday: flexibleTodayAmount.toString(),
         actualToday: focusDaySummary.actualAmount,
-        remainingToday: truncateBudgetAmount(suggestedTodayAmount.subtract(actualTodayAmount)).toString(),
+        usedToday: focusDaySummary.usedAmount,
+        remainingToday: focusDaySummary.remainingAmount,
         overspentDays,
         days,
     };
@@ -328,14 +349,35 @@ export function getBudgetExcludedIds(includedIds: string[], allIds: string[], ch
     return allIds.filter(id => !finalIncludedIds.has(id));
 }
 
-function getBudgetDayStatus(isFuture: boolean, hasActualData: boolean, actualAmount: BigDecimal, idealTotalAmount: BigDecimal, deltaAmount: BigDecimal): BudgetDayStatus {
+function createEmptyBudgetMonthSummary(yearMonth: string): BudgetMonthSummary {
+    return {
+        yearMonth,
+        daysInMonth: 0,
+        elapsedDays: 0,
+        remainingDays: 0,
+        monthlyBudget: '0',
+        monthSpent: '0',
+        monthUsed: '0',
+        monthRemaining: '0',
+        fixedToday: '0',
+        idealToday: '0',
+        flexibleToday: '0',
+        actualToday: '0',
+        usedToday: '0',
+        remainingToday: '0',
+        overspentDays: 0,
+        days: [],
+    };
+}
+
+function getBudgetDayStatus(isFuture: boolean, hasAnyData: boolean, usagePercent: number): BudgetDayStatus {
     if (isFuture) {
         return BudgetDayStatus.Future;
-    } else if (!hasActualData) {
+    } else if (!hasAnyData) {
         return BudgetDayStatus.NoData;
-    } else if (deltaAmount.greaterThan(0)) {
+    } else if (usagePercent > 100) {
         return BudgetDayStatus.Overspent;
-    } else if (idealTotalAmount.greaterThan(0) && actualAmount.greaterThanOrEqual(idealTotalAmount.multiply(BUDGET_PLANNER_NEAR_LIMIT_RATIO))) {
+    } else if (usagePercent >= BUDGET_PLANNER_NEAR_LIMIT_RATIO * 100) {
         return BudgetDayStatus.NearLimit;
     } else {
         return BudgetDayStatus.Under;
@@ -346,16 +388,34 @@ function formatBudgetDate(year: number, month: number, day: number): string {
     return `${year.toString().padStart(4, '0')}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
 }
 
+function cloneFixedExpenseDailyStates(states: Record<string, Record<string, BudgetFixedExpenseDayState>>): Record<string, Record<string, BudgetFixedExpenseDayState>> {
+    const result: Record<string, Record<string, BudgetFixedExpenseDayState>> = {};
+
+    for (const [date, dayStates] of Object.entries(states)) {
+        const clonedDayStates: Record<string, BudgetFixedExpenseDayState> = {};
+
+        for (const [expenseId, state] of Object.entries(dayStates)) {
+            clonedDayStates[expenseId] = {
+                amount: state.amount,
+            };
+        }
+
+        result[date] = clonedDayStates;
+    }
+
+    return result;
+}
+
 function normalizeBudgetMonthPlan(plan: Record<string, unknown>, defaultCurrency: string): BudgetMonthPlan {
     return {
         monthlyBudget: normalizeBudgetAmount(plan['monthlyBudget']),
         currency: isString(plan['currency']) && plan['currency'] ? plan['currency'] : defaultCurrency,
-        useAccountBalance: isBoolean(plan['useAccountBalance']) ? plan['useAccountBalance'] : true,
+        includeFixedExpensesInRemaining: isBoolean(plan['includeFixedExpensesInRemaining']) ? plan['includeFixedExpensesInRemaining'] : true,
         fixedExpenses: normalizeFixedExpenses(plan['fixedExpenses']),
+        fixedExpenseDailyStates: normalizeFixedExpenseDailyStates(plan['fixedExpenseDailyStates']),
         includedAccountIds: normalizeStringArray(plan['includedAccountIds']),
         includedCategoryIds: normalizeStringArray(plan['includedCategoryIds']),
         useTransactionTimezone: isBoolean(plan['useTransactionTimezone']) ? plan['useTransactionTimezone'] : false,
-        manualDailyActuals: normalizeManualDailyActuals(plan['manualDailyActuals']),
     };
 }
 
@@ -384,10 +444,50 @@ function normalizeFixedExpenses(value: unknown): BudgetFixedExpense[] {
             amount: normalizeBudgetAmount(fixedExpense['amount']),
             weekdays: weekdays.length > 0 ? weekdays : [0, 1, 2, 3, 4, 5, 6],
             enabled: isBoolean(fixedExpense['enabled']) ? fixedExpense['enabled'] : true,
+            includeInRemaining: isBoolean(fixedExpense['includeInRemaining']) ? fixedExpense['includeInRemaining'] : true,
         });
     }
 
     return fixedExpenses;
+}
+
+function normalizeFixedExpenseDailyStates(value: unknown): Record<string, Record<string, BudgetFixedExpenseDayState>> {
+    if (!isObject(value)) {
+        return {};
+    }
+
+    const result: Record<string, Record<string, BudgetFixedExpenseDayState>> = {};
+
+    for (const [date, dayStates] of Object.entries(value as Record<string, unknown>)) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !isObject(dayStates)) {
+            continue;
+        }
+
+        const normalizedDayStates: Record<string, BudgetFixedExpenseDayState> = {};
+
+        for (const [expenseId, state] of Object.entries(dayStates as Record<string, unknown>)) {
+            if (!expenseId || !isObject(state)) {
+                continue;
+            }
+
+            const stateValue = state as Record<string, unknown>;
+            const amount = stateValue['amount'] === null || stateValue['amount'] === undefined || stateValue['amount'] === ''
+                ? null
+                : normalizeBudgetAmount(stateValue['amount']);
+
+            if (amount !== null) {
+                normalizedDayStates[expenseId] = {
+                    amount,
+                };
+            }
+        }
+
+        if (Object.keys(normalizedDayStates).length > 0) {
+            result[date] = normalizedDayStates;
+        }
+    }
+
+    return result;
 }
 
 function normalizeWeekdays(value: unknown): WeekDayValue[] {
@@ -420,24 +520,6 @@ function normalizeStringArray(value: unknown): string[] {
     }
 
     return Array.from(result);
-}
-
-function normalizeManualDailyActuals(value: unknown): Record<string, string> {
-    if (!isObject(value)) {
-        return {};
-    }
-
-    const result: Record<string, string> = {};
-
-    for (const [date, amount] of Object.entries(value as Record<string, unknown>)) {
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-            continue;
-        }
-
-        result[date] = normalizeBudgetAmount(amount);
-    }
-
-    return result;
 }
 
 function normalizeBudgetAmount(value: unknown): string {

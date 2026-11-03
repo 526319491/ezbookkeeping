@@ -1,4 +1,4 @@
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 
 import { useI18n } from '@/locales/helpers.ts';
 import { useBudgetStore } from '@/stores/budget.ts';
@@ -7,12 +7,16 @@ import { useUserStore } from '@/stores/user.ts';
 import {
     BudgetDayStatus,
     type BudgetDaySummary,
+    type BudgetDayTransaction,
     type BudgetFixedExpense,
 } from '@/core/budget.ts';
 import type { WeekDayValue, Year0BasedMonth } from '@/core/datetime.ts';
 import type { BigDecimal } from '@/core/numeral.ts';
 
-import { getYearMonthDayDateTime } from '@/lib/datetime.ts';
+import {
+    getYearMonthDayDateTime,
+    parseDateTimeFromUnixTimeWithTimezoneOffset,
+} from '@/lib/datetime.ts';
 import {
     getCurrentYearMonth,
     parseBudgetAmount,
@@ -25,7 +29,9 @@ export function useBudgetPlannerPageBase() {
         formatAmountToLocalizedNumerals,
         formatAmountToLocalizedNumeralsWithCurrency,
         formatNumberToLocalizedNumerals,
+        formatPercentToLocalizedNumerals,
         formatDateTimeToGregorianLikeLongYearMonth,
+        formatDateTimeToShortTime,
         getAllWeekDays,
     } = useI18n();
 
@@ -80,8 +86,41 @@ export function useBudgetPlannerPageBase() {
     const includedAccountIds = computed<string[]>(() => plan.value.includedAccountIds);
     const includedCategoryIds = computed<string[]>(() => plan.value.includedCategoryIds);
 
+    const dayTransactions = ref<BudgetDayTransaction[]>([]);
+    const dayTransactionsLoading = ref<boolean>(false);
+    const dayTransactionsError = ref<unknown | null>(null);
+    let dayTransactionsRequestId = 0;
+
     function reload(force: boolean = false): Promise<void> {
         return budgetStore.loadCurrentMonthData({ force: force });
+    }
+
+    function loadDayTransactions(date: string): void {
+        const requestId = ++dayTransactionsRequestId;
+
+        dayTransactionsLoading.value = true;
+        dayTransactionsError.value = null;
+        dayTransactions.value = [];
+
+        budgetStore.loadDayTransactions(date).then(transactions => {
+            if (requestId !== dayTransactionsRequestId) {
+                return;
+            }
+
+            dayTransactions.value = transactions;
+        }).catch(err => {
+            if (requestId !== dayTransactionsRequestId) {
+                return;
+            }
+
+            dayTransactionsError.value = err;
+        }).finally(() => {
+            if (requestId !== dayTransactionsRequestId) {
+                return;
+            }
+
+            dayTransactionsLoading.value = false;
+        });
     }
 
     function changeMonth(offset: number): void {
@@ -107,17 +146,13 @@ export function useBudgetPlannerPageBase() {
         void reload();
     }
 
-    function setMonthlyBudget(value: number): void {
-        budgetStore.setMonthlyBudget(value);
-    }
-
     function setUseTransactionTimezone(value: boolean): void {
         budgetStore.setUseTransactionTimezone(value);
         void reload(true);
     }
 
-    function setUseAccountBalance(value: boolean): void {
-        budgetStore.setUseAccountBalance(value);
+    function setIncludeFixedExpensesInRemaining(value: boolean): void {
+        budgetStore.setIncludeFixedExpensesInRemaining(value);
     }
 
     function setIncludedAccountIds(accountIds: string[]): void {
@@ -160,16 +195,12 @@ export function useBudgetPlannerPageBase() {
         });
     }
 
-    function setManualActual(date: string, amount: number | string | null): void {
-        budgetStore.setManualActual(date, amount);
+    function setFixedExpenseDayAmount(date: string, expenseId: string, amount: number | string | null): void {
+        budgetStore.setFixedExpenseDayAmount(date, expenseId, amount);
     }
 
-    function clearManualActual(date: string): void {
-        budgetStore.setManualActual(date, null);
-    }
-
-    function getManualActual(date: string): string | null {
-        return plan.value.manualDailyActuals[date] ?? null;
+    function clearFixedExpenseDayState(date: string, expenseId: string): void {
+        budgetStore.clearFixedExpenseDayState(date, expenseId);
     }
 
     function formatAmount(value: string | BigDecimal | null | undefined, withCurrency: boolean = true): string {
@@ -184,6 +215,15 @@ export function useBudgetPlannerPageBase() {
 
     function formatNumber(value: number): string {
         return formatNumberToLocalizedNumerals(value);
+    }
+
+    function formatPercent(value: number): string {
+        return formatPercentToLocalizedNumerals(value, 0, '');
+    }
+
+    function formatTransactionTime(transaction: BudgetDayTransaction): string {
+        const dateTime = parseDateTimeFromUnixTimeWithTimezoneOffset(transaction.time, transaction.utcOffset);
+        return formatDateTimeToShortTime(dateTime);
     }
 
     function getWeekdayName(weekday: WeekDayValue): string {
@@ -244,12 +284,15 @@ export function useBudgetPlannerPageBase() {
         allWeekdays,
         includedAccountIds,
         includedCategoryIds,
+        dayTransactions,
+        dayTransactionsLoading,
+        dayTransactionsError,
         // functions
         reload,
+        loadDayTransactions,
         changeMonth,
         goToCurrentMonth,
-        setMonthlyBudget,
-        setUseAccountBalance,
+        setIncludeFixedExpensesInRemaining,
         setUseTransactionTimezone,
         setIncludedAccountIds,
         setIncludedCategoryIds,
@@ -258,11 +301,12 @@ export function useBudgetPlannerPageBase() {
         removeFixedExpense,
         toggleFixedExpenseWeekday,
         toggleFixedExpenseEnabled,
-        setManualActual,
-        clearManualActual,
-        getManualActual,
+        setFixedExpenseDayAmount,
+        clearFixedExpenseDayState,
         formatAmount,
         formatNumber,
+        formatPercent,
+        formatTransactionTime,
         getWeekdayName,
         getDayStatusText,
         getDayStatusColor,

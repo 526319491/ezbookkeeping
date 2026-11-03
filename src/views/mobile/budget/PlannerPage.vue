@@ -64,13 +64,27 @@
         <f7-block-title>{{ tt('Daily Budget') }}</f7-block-title>
         <f7-list strong inset dividers media-list>
             <f7-list-item :key="day.date" v-for="day in days"
-                          :title="day.date"
-                          :subtitle="getDayStatusText(day.status)"
-                          :after="formatAmount(day.actualAmount, false)"
-                          :class="{ 'budget-day-today': isToday(day.date) }"
+                          :class="['budget-mobile-day', { 'budget-day-today': isToday(day.date) }]"
                           @click="openDayDialog(day)">
-                <template #footer>
-                    <small>{{ tt('Daily Budget') }} {{ formatAmount(day.idealTotalAmount, false) }}</small>
+                <template #title>
+                    <div class="budget-mobile-day-title">
+                        <span class="budget-mobile-day-badge">{{ formatNumber(day.day) }}</span>
+                        <span>{{ day.date }}</span>
+                    </div>
+                </template>
+                <template #after>
+                    <b :class="getDayRemainingClass(day)">{{ formatAmount(day.remainingAmount) }}</b>
+                </template>
+                <template #subtitle>
+                    <div class="budget-mobile-day-meta">
+                        <span>{{ tt('Used') }} {{ formatAmount(day.usedAmount, false) }} / {{ formatAmount(day.dailyBudgetAmount, false) }}</span>
+                        <b>{{ formatPercent(day.usagePercent) }}</b>
+                    </div>
+                    <f7-progressbar class="budget-mobile-day-progress" :progress="Math.min(100, day.usagePercent)"
+                                    :class="'budget-progress-' + day.status"></f7-progressbar>
+                    <div class="budget-mobile-day-fixed" :class="{ 'budget-fixed-excluded': !plan.includeFixedExpensesInRemaining || day.includedFixedAmount === '0' }" v-if="day.fixedAmount !== '0' && day.date >= today">
+                        <span>{{ tt('Fixed Expenses') }} {{ formatAmount(day.fixedAmount, false) }}</span>
+                    </div>
                 </template>
             </f7-list-item>
         </f7-list>
@@ -85,18 +99,6 @@
                 <div class="padding-horizontal padding-bottom">
                     <f7-list strong inset dividers class="no-margin margin-bottom">
                         <f7-list-item>
-                            <template #after-title>{{ tt('Use Account Balance as Living Allowance') }}</template>
-                            <template #after>
-                                <f7-toggle :checked="plan.useAccountBalance" @toggle:change="setUseAccountBalance"></f7-toggle>
-                            </template>
-                        </f7-list-item>
-                        <f7-list-item v-if="plan.useAccountBalance" :title="tt('Living Expense Balance')"
-                                      :after="formatAmount(accountBalance)"></f7-list-item>
-                        <f7-list-item v-if="plan.useAccountBalance && !isAccountBalanceActive"
-                                      :title="tt('Account Balance Only Applies to Current Month')"></f7-list-item>
-                        <list-number-input v-if="!plan.useAccountBalance" :label="tt('Monthly Living Allowance')" :max-decimal-count="2"
-                                           v-model="budgetInput"></list-number-input>
-                        <f7-list-item>
                             <template #after-title>{{ tt('Use Transaction Timezone') }}</template>
                             <template #after>
                                 <f7-toggle :checked="plan.useTransactionTimezone" @toggle:change="setUseTransactionTimezone"></f7-toggle>
@@ -109,10 +111,16 @@
                                       :title="tt('Transaction Categories Included in Budget')"
                                       :after="includedCategoriesDisplay"></f7-list-item>
                     </f7-list>
-                    <f7-button large fill :text="tt('Apply')" @click="applyBudget"></f7-button>
 
                     <f7-block-title class="budget-fixed-expenses-title">{{ tt('Fixed Daily Expenses') }}</f7-block-title>
                     <f7-list strong inset dividers class="no-margin">
+                        <f7-list-item>
+                            <template #after-title>{{ tt('Include in Remaining') }}</template>
+                            <template #after>
+                                <f7-toggle :checked="plan.includeFixedExpensesInRemaining"
+                                           @toggle:change="setIncludeFixedExpensesInRemaining"></f7-toggle>
+                            </template>
+                        </f7-list-item>
                         <template :key="expense.id" v-for="expense in plan.fixedExpenses">
                             <f7-list-input type="text" :label="tt('Name')" :value="expense.name"
                                            @input="updateFixedExpenseName(expense, $event.target.value)"></f7-list-input>
@@ -173,46 +181,77 @@
                 <f7-block class="no-margin-top">
                     <div class="budget-day-detail">
                         <span>{{ tt('Daily Budget') }}</span>
-                        <b class="text-primary">{{ formatAmount(selectedDay.idealTotalAmount) }}</b>
+                        <b class="text-primary">{{ formatAmount(selectedDay.dailyBudgetAmount) }}</b>
                     </div>
                     <div class="budget-day-detail">
-                        <span>{{ tt('Suggested Daily Spending') }}</span>
-                        <b class="text-primary">{{ formatAmount(selectedDay.suggestedAmount) }}</b>
+                        <span>{{ tt('Remaining') }}</span>
+                        <b :class="getDayRemainingClass(selectedDay)">{{ formatAmount(selectedDay.remainingAmount) }}</b>
                     </div>
                     <div class="budget-day-detail">
                         <span>{{ tt('Spent') }}</span>
                         <b>{{ formatAmount(selectedDay.actualAmount) }}</b>
                     </div>
-                    <div class="budget-day-detail">
-                        <span>{{ tt('Status') }}</span>
-                        <b>{{ getDayStatusText(selectedDay.status) }}</b>
-                    </div>
                 </f7-block>
-                <f7-list strong inset dividers>
-                    <list-number-input :label="tt('Manual Actual Spending')" :max-decimal-count="2"
-                                       v-model="manualActualInput"></list-number-input>
+                <f7-block-title class="margin-top">{{ tt('Transaction Details') }}</f7-block-title>
+                <f7-list strong inset dividers v-if="dayTransactionsLoading">
+                    <f7-list-item>
+                        <div class="display-flex justify-content-center padding">
+                            <f7-preloader />
+                        </div>
+                    </f7-list-item>
                 </f7-list>
-                <div class="padding-horizontal padding-bottom">
-                    <f7-button large fill :text="tt('Save')" @click="saveManualActual"></f7-button>
-                    <f7-button class="margin-top" large :text="tt('Clear Override')"
-                               v-if="getManualActual(selectedDay.date) !== null"
-                               @click="clearManualActualForSelectedDay"></f7-button>
-                </div>
+                <f7-list strong inset dividers v-else-if="dayTransactionsError">
+                    <f7-list-item :title="tt('Unable to retrieve budget data')" />
+                </f7-list>
+                <f7-list strong inset dividers v-else-if="dayTransactions.length < 1">
+                    <f7-list-item :title="tt('No transaction data')" />
+                </f7-list>
+                <f7-list strong inset dividers media-list v-else>
+                    <f7-list-item :key="transaction.id" v-for="transaction in dayTransactions">
+                        <template #media>
+                            <item-icon v-if="transaction.categoryColor"
+                                       :icon-type="getCategoryIconType(transaction.categoryIconType)"
+                                       :icon-id="transaction.categoryIcon"
+                                       :color="transaction.categoryColor" />
+                        </template>
+                        <template #title>
+                            <div class="budget-mobile-transaction-title">
+                                <span class="text-truncate">{{ transaction.categoryName || tt('None') }}</span>
+                                <b class="text-expense">{{ formatAmount(transaction.amount) }}</b>
+                            </div>
+                        </template>
+                        <template #subtitle>
+                            <div class="budget-mobile-transaction-meta">
+                                {{ formatTransactionTime(transaction) }} · {{ transaction.accountName }}
+                            </div>
+                            <div class="text-truncate" v-if="transaction.comment">{{ transaction.comment }}</div>
+                        </template>
+                    </f7-list-item>
+                </f7-list>
+                <f7-list strong inset dividers v-if="dayFixedExpenses.length > 0 && selectedDay.date >= today">
+                    <f7-list-item group-title>{{ tt('Fixed Expenses') }}</f7-list-item>
+                    <template :key="fixedExpense.id" v-for="fixedExpense in dayFixedExpenses">
+                        <list-number-input :label="fixedExpense.name" :max-decimal-count="2"
+                                           :model-value="toInputNumber(fixedExpense.amount)"
+                                           @update:model-value="setDayFixedExpenseAmount(selectedDay.date, fixedExpense.id, $event)"></list-number-input>
+                    </template>
+                </f7-list>
             </f7-page-content>
         </f7-sheet>
     </f7-page>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, ref } from 'vue';
 
 import { useI18n } from '@/locales/helpers.ts';
 import { useBudgetPlannerPageBase } from '@/views/base/budget/BudgetPlannerPageBase.ts';
 
-import { BudgetDayStatus, type BudgetDaySummary, type BudgetFixedExpense } from '@/core/budget.ts';
+import { BudgetDayStatus, type BudgetDaySummary, type BudgetFixedExpense, type BudgetFixedExpenseDaySummary } from '@/core/budget.ts';
 import type { WeekDayValue } from '@/core/datetime.ts';
 
 import { parseBudgetAmount } from '@/lib/budget.ts';
+import { getCategoryIconType } from '@/lib/icon.ts';
 import { isUserLogined, isUserUnlocked } from '@/lib/userstate.ts';
 
 const { tt } = useI18n();
@@ -233,22 +272,25 @@ const {
     allWeekdays,
     includedAccountIds,
     includedCategoryIds,
+    dayTransactions,
+    dayTransactionsLoading,
+    dayTransactionsError,
     reload,
+    loadDayTransactions,
     changeMonth,
     goToCurrentMonth,
-    setMonthlyBudget,
-    setUseAccountBalance,
+    setIncludeFixedExpensesInRemaining,
     setUseTransactionTimezone,
     addFixedExpense,
     updateFixedExpense,
     removeFixedExpense,
     toggleFixedExpenseEnabled,
     toggleFixedExpenseWeekday,
-    setManualActual,
-    clearManualActual,
-    getManualActual,
+    setFixedExpenseDayAmount,
     formatAmount,
     formatNumber,
+    formatPercent,
+    formatTransactionTime,
     getDayStatusText,
     isToday,
 } = useBudgetPlannerPageBase();
@@ -256,10 +298,16 @@ const {
 const showPlanSheet = ref<boolean>(false);
 const showWeekdaySheet = ref<boolean>(false);
 const showDaySheet = ref<boolean>(false);
-const selectedDay = ref<BudgetDaySummary | null>(null);
+const selectedDayDate = ref<string | null>(null);
+const selectedDay = computed<BudgetDaySummary | null>(() => {
+    if (!selectedDayDate.value) {
+        return null;
+    }
+
+    return days.value.find(day => day.date === selectedDayDate.value) ?? null;
+});
+const dayFixedExpenses = ref<BudgetFixedExpenseDaySummary[]>([]);
 const currentWeekdayExpense = ref<BudgetFixedExpense | null>(null);
-const budgetInput = ref<number>(0);
-const manualActualInput = ref<number>(0);
 const newFixedExpenseName = ref<string>('');
 const newFixedExpenseAmount = ref<number>(0);
 
@@ -302,14 +350,23 @@ function toInputNumber(value: string): number {
     return parseBudgetAmount(value).toDoubleNumber();
 }
 
-function openPlanSheet(): void {
-    budgetInput.value = parseBudgetAmount(plan.value.monthlyBudget).toDoubleNumber();
-    showPlanSheet.value = true;
+function getDayRemainingClass(day: BudgetDaySummary): string {
+    const remainingAmount = parseBudgetAmount(day.remainingAmount);
+    const dailyBudgetAmount = parseBudgetAmount(day.dailyBudgetAmount);
+
+    if (remainingAmount.isNegative()) {
+        return 'budget-amount-overspent';
+    } else if (day.status === BudgetDayStatus.Future) {
+        return 'budget-amount-future';
+    } else if (dailyBudgetAmount.greaterThan(0) && remainingAmount.lessThanOrEqual(dailyBudgetAmount.multiply(0.1))) {
+        return 'budget-amount-near_limit';
+    } else {
+        return 'budget-amount-under';
+    }
 }
 
-function applyBudget(): void {
-    setMonthlyBudget(budgetInput.value);
-    showPlanSheet.value = false;
+function openPlanSheet(): void {
+    showPlanSheet.value = true;
 }
 
 function addNewFixedExpense(): void {
@@ -353,38 +410,22 @@ function toggleWeekday(weekday: number): void {
 }
 
 function openDayDialog(day: BudgetDaySummary): void {
-    selectedDay.value = day;
-    manualActualInput.value = day.hasActualData ? parseBudgetAmount(day.actualAmount).toDoubleNumber() : 0;
+    selectedDayDate.value = day.date;
+    dayFixedExpenses.value = day.fixedExpenses.map(fixedExpense => ({ ...fixedExpense }));
+    loadDayTransactions(day.date);
     showDaySheet.value = true;
 }
 
-function saveManualActual(): void {
-    if (!selectedDay.value) {
-        return;
-    }
-
-    setManualActual(selectedDay.value.date, manualActualInput.value);
-    showDaySheet.value = false;
-}
-
-function clearManualActualForSelectedDay(): void {
-    if (!selectedDay.value) {
-        return;
-    }
-
-    clearManualActual(selectedDay.value.date);
-    showDaySheet.value = false;
+function setDayFixedExpenseAmount(date: string, expenseId: string, amount: number): void {
+    dayFixedExpenses.value = dayFixedExpenses.value.map(fixedExpense => fixedExpense.id === expenseId
+        ? { ...fixedExpense, amount: amount.toString() }
+        : fixedExpense);
+    setFixedExpenseDayAmount(date, expenseId, amount);
 }
 
 function onPageAfterIn(): void {
     reload(false).catch(() => undefined);
 }
-
-watch(() => plan.value.monthlyBudget, value => {
-    if (!showPlanSheet.value) {
-        budgetInput.value = parseBudgetAmount(value).toDoubleNumber();
-    }
-});
 
 if (isUserLogined() && isUserUnlocked()) {
     reload().catch(() => undefined);
@@ -474,6 +515,86 @@ if (isUserLogined() && isUserUnlocked()) {
     color: #c67e48;
 }
 
+.budget-mobile-day-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.budget-mobile-day-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 4px;
+    border-radius: 10px;
+    background: rgba(198, 126, 72, 0.14);
+    color: #c67e48;
+    font-size: 0.7rem;
+    font-weight: 700;
+}
+
+.budget-mobile-day-meta {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 0.75rem;
+}
+
+.budget-mobile-day-progress {
+    margin-top: 6px;
+}
+
+.budget-mobile-day-fixed {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 4px;
+    color: var(--f7-text-color-secondary);
+    font-size: 0.7rem;
+}
+
+.budget-mobile-day-fixed.budget-fixed-excluded {
+    text-decoration: line-through;
+    opacity: 0.7;
+}
+
+.budget-amount-overspent {
+    color: #d9534f;
+}
+
+.budget-amount-near_limit {
+    color: #f0ad4e;
+}
+
+.budget-amount-under {
+    color: #5cb85c;
+}
+
+.budget-amount-no_data,
+.budget-amount-future {
+    color: var(--f7-text-color-secondary);
+}
+
+.budget-progress-overspent :deep(.progressbar-inner) {
+    background-color: #d9534f;
+}
+
+.budget-progress-near_limit :deep(.progressbar-inner) {
+    background-color: #f0ad4e;
+}
+
+.budget-progress-under :deep(.progressbar-inner) {
+    background-color: #5cb85c;
+}
+
+.budget-progress-no_data :deep(.progressbar-inner),
+.budget-progress-future :deep(.progressbar-inner) {
+    background-color: #8e8e93;
+}
+
 .budget-fixed-expenses-title {
     margin-top: 16px;
 }
@@ -493,5 +614,17 @@ if (isUserLogined() && isUserUnlocked()) {
     justify-content: space-between;
     padding: 6px 0;
     border-bottom: 1px solid var(--f7-list-item-border-color);
+}
+
+.budget-mobile-transaction-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.budget-mobile-transaction-meta {
+    color: var(--f7-text-color-secondary);
+    font-size: 0.75rem;
 }
 </style>

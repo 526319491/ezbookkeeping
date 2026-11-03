@@ -58,21 +58,28 @@
 
         <v-divider class="my-2" />
 
-        <div class="nav-section-title">{{ tt('Fixed Expenses') }}</div>
-        <template v-if="visibleFixedExpenses.length > 0">
-            <a class="budget-sidebar-row" :key="expense.id" v-for="expense in visibleFixedExpenses"
-               @click="$emit('edit-plan')">
+        <div class="budget-sidebar-section-header">
+            <div class="nav-section-title">{{ tt('Fixed Expenses') }}</div>
+            <v-switch class="budget-sidebar-fixed-switch" density="compact" hide-details
+                      :label="tt('Include in Remaining')"
+                      :model-value="plan.includeFixedExpensesInRemaining"
+                      @update:model-value="onIncludeFixedExpensesChanged" />
+        </div>
+        <template v-if="fixedExpenses.length > 0">
+            <div class="budget-sidebar-row" :key="expense.id" v-for="expense in fixedExpenses"
+                 @click="$emit('edit-plan')">
                 <div class="budget-sidebar-row-content">
                     <span class="budget-sidebar-row-title text-truncate">{{ expense.name || tt('Fixed Expenses') }}</span>
                     <small class="budget-sidebar-row-sub text-truncate">{{ getFixedExpenseWeekdaysText(expense) }}</small>
                 </div>
                 <b class="budget-sidebar-row-value">{{ formatAmount(expense.amount) }}</b>
-            </a>
-            <div class="nav-link" v-if="hasMoreFixedExpenses">
-                <a class="d-flex align-center cursor-pointer" @click="$emit('edit-plan')">
-                    <span class="nav-item-title">{{ tt('View All') }}</span>
-                    <v-icon :icon="mdiChevronRight" size="18" />
-                </a>
+                <span class="budget-sidebar-row-switch" @click.stop>
+                    <v-switch class="budget-sidebar-row-switch-control" density="compact" hide-details inset
+                              :aria-label="tt('Include in Remaining')"
+                              :title="tt('Include in Remaining')"
+                              :model-value="expense.includeInRemaining"
+                              @update:model-value="updateFixedExpenseIncludeInRemaining(expense, $event)" />
+                </span>
             </div>
         </template>
         <div class="budget-sidebar-empty" v-else>{{ tt('No Fixed Expenses') }}</div>
@@ -109,7 +116,7 @@ import { useBudgetPlannerPageBase } from '@/views/base/budget/BudgetPlannerPageB
 import { useAccountsStore } from '@/stores/account.ts';
 import { useUserStore } from '@/stores/user.ts';
 
-import { BudgetDayStatus } from '@/core/budget.ts';
+import { BudgetDayStatus, type BudgetFixedExpense } from '@/core/budget.ts';
 import type { Account } from '@/models/account.ts';
 
 import { parseBudgetAmount } from '@/lib/budget.ts';
@@ -143,6 +150,8 @@ const {
     isCurrentMonth,
     accountBalance,
     isAccountBalanceActive,
+    setIncludeFixedExpensesInRemaining,
+    updateFixedExpense,
     formatAmount,
     getDayStatusText,
 } = useBudgetPlannerPageBase();
@@ -150,9 +159,7 @@ const {
 const accountsStore = useAccountsStore();
 const userStore = useUserStore();
 
-const enabledFixedExpenses = computed(() => plan.value.fixedExpenses.filter(expense => expense.enabled));
-const visibleFixedExpenses = computed(() => enabledFixedExpenses.value.slice(0, 4));
-const hasMoreFixedExpenses = computed(() => enabledFixedExpenses.value.length > 4);
+const fixedExpenses = computed(() => plan.value.fixedExpenses.filter(expense => expense.enabled));
 
 const includedAccounts = computed<Account[]>(() => {
     const planValue = plan.value;
@@ -175,16 +182,14 @@ const visibleAccounts = computed(() => includedAccounts.value.slice(0, 4));
 const hasMoreAccounts = computed(() => includedAccounts.value.length > 4);
 
 const budgetUsagePercent = computed<number>(() => {
-    const spent = parseBudgetAmount(summary.value.monthSpent);
-    const base = isAccountBalanceActive.value
-        ? spent.add(parseBudgetAmount(accountBalance.value))
-        : parseBudgetAmount(plan.value.monthlyBudget);
+    const used = parseBudgetAmount(summary.value.monthUsed);
+    const base = parseBudgetAmount(summary.value.monthlyBudget);
 
     if (base.lessThanOrEqual(0)) {
         return 0;
     }
 
-    return Math.min(999, spent.divide(base).multiply(100).toDoubleNumber());
+    return Math.min(999, used.divide(base).multiply(100).toDoubleNumber());
 });
 
 const budgetUsageColor = computed<string>(() => {
@@ -219,11 +224,37 @@ function getFixedExpenseWeekdaysText(expense: { weekdays: number[] }): string {
 function formatAccountBalance(account: Account): string {
     return formatAmountToLocalizedNumeralsWithCurrency(parseBudgetAmount(account.balance), account.currency);
 }
+
+function onIncludeFixedExpensesChanged(value: boolean | null): void {
+    setIncludeFixedExpensesInRemaining(!!value);
+}
+
+function updateFixedExpenseIncludeInRemaining(expense: BudgetFixedExpense, includeInRemaining: boolean | null): void {
+    updateFixedExpense({ ...expense, includeInRemaining: !!includeInRemaining });
+}
 </script>
 
 <style scoped>
 .budget-sidebar {
     list-style: none;
+}
+
+.budget-sidebar-section-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px;
+}
+
+.budget-sidebar-section-header .nav-section-title {
+    padding-inline-end: 0;
+}
+
+.budget-sidebar-fixed-switch {
+    flex: 0 0 auto;
+    margin-inline-end: 8px;
+    font-size: 0.68rem;
 }
 
 .budget-sidebar-progress small {
@@ -312,6 +343,20 @@ function formatAccountBalance(account: Account): string {
 .budget-sidebar-row-value {
     flex: 0 0 auto;
     font-size: 0.8rem;
+}
+
+.budget-sidebar-row-switch {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+}
+
+.budget-sidebar-row-switch-control :deep(.v-input__control) {
+    height: auto;
+}
+
+.budget-sidebar-row-switch-control :deep(.v-selection-control) {
+    min-height: 24px;
 }
 
 .budget-sidebar-empty {

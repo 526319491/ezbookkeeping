@@ -183,8 +183,6 @@ export const ALL_ALLOWED_CLOUD_SYNC_APP_SETTING_KEY_TYPES: Record<string, UserAp
     // Insights Explorer Page
     'insightsExplorerDefaultDateRangeType': UserApplicationCloudSettingType.Number,
     'showTagInInsightsExplorerPage': UserApplicationCloudSettingType.Boolean,
-    // Budget Planner Page
-    'budgetPlannerData': UserApplicationCloudSettingType.String,
     // Account List Page
     'totalAmountExcludeAccountIds': UserApplicationCloudSettingType.StringBooleanMap,
     'hideCategoriesWithoutAccounts': UserApplicationCloudSettingType.Boolean,

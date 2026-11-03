@@ -35,6 +35,7 @@ type DataManagementsApi struct {
 	importPresets           *services.ImportPresetsService
 	userCustomExchangeRates *services.UserCustomExchangeRatesService
 	insightsExploreres      *services.InsightsExplorerService
+	userBudgetPlans         *services.UserBudgetPlanService
 }
 
 // Initialize a data management api singleton instance
@@ -56,6 +57,7 @@ var (
 		importPresets:           services.ImportPresets,
 		userCustomExchangeRates: services.UserCustomExchangeRates,
 		insightsExploreres:      services.InsightsExplorers,
+		userBudgetPlans:         services.UserBudgetPlans,
 	}
 )
 
@@ -257,6 +259,13 @@ func (a *DataManagementsApi) ClearAllDataHandler(c *core.WebContext) (any, *errs
 
 	if err != nil {
 		log.Errorf(c, "[data_managements.ClearAllDataHandler] failed to delete all explorations, because %s", err.Error())
+		return nil, errs.Or(err, errs.ErrOperationFailed)
+	}
+
+	err = a.userBudgetPlans.DeleteUserBudgetPlan(c, uid)
+
+	if err != nil {
+		log.Errorf(c, "[data_managements.ClearAllDataHandler] failed to delete user budget plan, because %s", err.Error())
 		return nil, errs.Or(err, errs.ErrOperationFailed)
 	}
 

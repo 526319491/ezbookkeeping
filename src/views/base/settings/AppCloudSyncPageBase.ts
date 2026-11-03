@@ -96,12 +96,6 @@ export const ALL_APPLICATION_CLOUD_SETTINGS: CategorizedApplicationCloudSettingI
         ]
     },
     {
-        categoryName: 'Budget Planner Page',
-        items: [
-            { settingKey: 'budgetPlannerData', settingName: 'Budget Planner Data', mobile: true, desktop: true }
-        ]
-    },
-    {
         categoryName: 'Account List Page',
         items: [
             { settingKey: 'totalAmountExcludeAccountIds', settingName: 'Accounts Included in Total', mobile: true, desktop: true },
