@@ -11,6 +11,7 @@ import {
     type BudgetMonthPlan,
     type BudgetMonthSummary,
     type BudgetPlannerData,
+    type BudgetProgressSummary,
 } from '@/core/budget.ts';
 
 import {
@@ -330,6 +331,43 @@ export function buildBudgetMonthSummary(
         remainingToday: focusDaySummary.remainingAmount,
         overspentDays,
         days,
+    };
+}
+
+export function buildBudgetProgressSummary(summary: BudgetMonthSummary, yearMonth: string, today: string): BudgetProgressSummary | null {
+    const currentYearMonth = today.substring(0, 7);
+
+    if (yearMonth > currentYearMonth || summary.elapsedDays < 1) {
+        return null;
+    }
+
+    const elapsedDays = Math.min(summary.elapsedDays, summary.days.length);
+    let expectedAmount = BIG_DECIMAL_ZERO;
+    let actualAmount = BIG_DECIMAL_ZERO;
+
+    for (let index = 0; index < elapsedDays; index++) {
+        const day = summary.days[index];
+
+        if (!day) {
+            continue;
+        }
+
+        expectedAmount = expectedAmount.add(parseBudgetAmount(day.dailyBudgetAmount));
+        actualAmount = actualAmount.add(parseBudgetAmount(day.usedAmount));
+    }
+
+    expectedAmount = truncateBudgetAmount(expectedAmount);
+    actualAmount = truncateBudgetAmount(actualAmount);
+
+    if (!expectedAmount.isPositive()) {
+        return null;
+    }
+
+    return {
+        elapsedDays,
+        expectedAmount: expectedAmount.toString(),
+        actualAmount: actualAmount.toString(),
+        differenceAmount: truncateBudgetAmount(actualAmount.subtract(expectedAmount)).toString(),
     };
 }
 

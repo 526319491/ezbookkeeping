@@ -89,6 +89,16 @@
                                 </v-col>
                             </v-row>
 
+                            <div class="budget-progress-row" v-if="budgetProgress">
+                                <div class="d-flex align-center flex-wrap gap-2">
+                                    <span class="text-body-medium">{{ budgetProgressPeriodLabel }}</span>
+                                    <span class="text-body-large font-weight-medium" :class="'budget-progress-' + getBudgetProgressType(budgetProgress)">
+                                        {{ getBudgetProgressText(budgetProgress) }}
+                                    </span>
+                                </div>
+                                <small class="text-medium-emphasis">{{ getBudgetProgressDetailText(budgetProgress) }}</small>
+                            </div>
+
                             <v-divider class="my-4" />
 
                             <div class="d-flex align-center flex-wrap gap-2">
@@ -388,6 +398,11 @@ const {
     formatPercent,
     formatTransactionTime,
     getDayStatusText,
+    budgetProgress,
+    budgetProgressPeriodLabel,
+    getBudgetProgressText,
+    getBudgetProgressDetailText,
+    getBudgetProgressType,
     isToday,
 } = useBudgetPlannerPageBase();
 
@@ -592,6 +607,29 @@ if (isUserLogined() && isUserUnlocked()) {
 <style scoped>
 .budget-summary-item {
     padding: 4px 0;
+}
+
+.budget-progress-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    margin-top: 4px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    background: rgba(var(--v-theme-primary), 0.06);
+}
+
+.budget-progress-overspent {
+    color: rgb(var(--v-theme-error));
+}
+
+.budget-progress-saved {
+    color: rgb(var(--v-theme-success));
+}
+
+.budget-progress-on_budget {
+    color: rgba(var(--v-theme-on-surface), 0.7);
 }
 
 .budget-calendar {

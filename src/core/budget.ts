@@ -94,3 +94,10 @@ export interface BudgetMonthSummary {
     readonly overspentDays: number;
     readonly days: BudgetDaySummary[];
 }
+
+export interface BudgetProgressSummary {
+    readonly elapsedDays: number;
+    readonly expectedAmount: string;
+    readonly actualAmount: string;
+    readonly differenceAmount: string;
+}

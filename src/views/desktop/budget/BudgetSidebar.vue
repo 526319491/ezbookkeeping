@@ -28,6 +28,16 @@
                 <span>{{ tt('Today Suggested Spending') }}</span>
                 <b class="text-primary">{{ formatAmount(summary.idealToday) }}</b>
             </div>
+            <div class="budget-sidebar-kv">
+                <span>{{ tt('Budget Progress') }}</span>
+                <b class="budget-sidebar-progress-value text-truncate"
+                   :class="'budget-progress-' + getBudgetProgressType(budgetProgress)"
+                   v-if="budgetProgress">{{ getBudgetProgressText(budgetProgress) }}</b>
+                <b v-else>-</b>
+            </div>
+            <small class="budget-sidebar-progress-detail text-truncate" v-if="budgetProgress">
+                {{ getBudgetProgressDetailText(budgetProgress) }}
+            </small>
             <div class="budget-sidebar-today-status mt-2">
                 <span class="budget-status-dot" :class="'budget-status-' + todayStatus"></span>
                 <span>{{ getDayStatusText(todayStatus) }}</span>
@@ -150,9 +160,13 @@ const {
     isCurrentMonth,
     accountBalance,
     isAccountBalanceActive,
+    budgetProgress,
     setIncludeFixedExpensesInRemaining,
     updateFixedExpense,
     formatAmount,
+    getBudgetProgressText,
+    getBudgetProgressDetailText,
+    getBudgetProgressType,
     getDayStatusText,
 } = useBudgetPlannerPageBase();
 
@@ -272,6 +286,28 @@ function updateFixedExpenseIncludeInRemaining(expense: BudgetFixedExpense, inclu
 
 .budget-sidebar-kv span {
     color: rgba(var(--v-theme-on-surface), 0.64);
+}
+
+.budget-sidebar-progress-value {
+    font-size: 0.8rem;
+}
+
+.budget-sidebar-progress-detail {
+    display: block;
+    color: rgba(var(--v-theme-on-surface), 0.55);
+    font-size: 0.68rem;
+}
+
+.budget-progress-overspent {
+    color: rgb(var(--v-theme-error));
+}
+
+.budget-progress-saved {
+    color: rgb(var(--v-theme-success));
+}
+
+.budget-progress-on_budget {
+    color: rgba(var(--v-theme-on-surface), 0.7);
 }
 
 .budget-sidebar-today-status {

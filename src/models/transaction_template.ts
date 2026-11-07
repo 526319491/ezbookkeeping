@@ -12,10 +12,11 @@ export class TransactionTemplate extends Transaction implements TransactionTempl
     public scheduledStartDate?: TextualYearMonthDay;
     public scheduledEndDate?: TextualYearMonthDay;
     public scheduledAt?: number;
+    public scheduledTime?: number;
     public displayOrder: number;
     public hidden: boolean;
 
-    private constructor(id: string, templateType: number, name: string, type: number, categoryId: string, timeZone: string | undefined, utcOffset: number, sourceAccountId: string, destinationAccountId: string, sourceAmount: number, destinationAmount: number, hideAmount: boolean, scheduledFrequencyType: number | undefined, scheduledFrequency: string | undefined, scheduledStartDate: TextualYearMonthDay | undefined, scheduledEndDate: TextualYearMonthDay | undefined, scheduledAt: number | undefined, tagIds: string[], comment: string, editable: boolean, displayOrder: number, hidden: boolean) {
+    private constructor(id: string, templateType: number, name: string, type: number, categoryId: string, timeZone: string | undefined, utcOffset: number, sourceAccountId: string, destinationAccountId: string, sourceAmount: number, destinationAmount: number, hideAmount: boolean, scheduledFrequencyType: number | undefined, scheduledFrequency: string | undefined, scheduledStartDate: TextualYearMonthDay | undefined, scheduledEndDate: TextualYearMonthDay | undefined, scheduledAt: number | undefined, scheduledTime: number | undefined, tagIds: string[], comment: string, editable: boolean, displayOrder: number, hidden: boolean) {
         super(id, '', type, categoryId, 0, timeZone, utcOffset, sourceAccountId, destinationAccountId, sourceAmount, destinationAmount, hideAmount, tagIds, comment, editable);
         this.templateType = templateType;
         this.name = name;
@@ -24,6 +25,7 @@ export class TransactionTemplate extends Transaction implements TransactionTempl
         this.scheduledStartDate = scheduledStartDate;
         this.scheduledEndDate = scheduledEndDate;
         this.scheduledAt = scheduledAt;
+        this.scheduledTime = scheduledTime;
         this.displayOrder = displayOrder;
         this.hidden = hidden;
     }
@@ -37,6 +39,7 @@ export class TransactionTemplate extends Transaction implements TransactionTempl
             this.scheduledFrequency = other.scheduledFrequency;
             this.scheduledStartDate = other.scheduledStartDate;
             this.scheduledEndDate = other.scheduledEndDate;
+            this.scheduledTime = other.scheduledTime;
             this.timeZone = other.timeZone;
             this.utcOffset = other.utcOffset;
         }
@@ -59,6 +62,7 @@ export class TransactionTemplate extends Transaction implements TransactionTempl
             scheduledFrequency: this.templateType === TemplateType.Schedule.type ? this.scheduledFrequency : undefined,
             scheduledStartDate: this.templateType === TemplateType.Schedule.type && this.scheduledStartDate ? this.scheduledStartDate : undefined,
             scheduledEndDate: this.templateType === TemplateType.Schedule.type && this.scheduledEndDate ? this.scheduledEndDate : undefined,
+            scheduledTime: this.templateType === TemplateType.Schedule.type ? this.scheduledTime : undefined,
             timeZone: this.templateType === TemplateType.Schedule.type ? this.timeZone : undefined,
             utcOffset: this.templateType === TemplateType.Schedule.type ? this.utcOffset : undefined,
             clientSessionId: clientSessionId
@@ -82,6 +86,7 @@ export class TransactionTemplate extends Transaction implements TransactionTempl
             scheduledFrequency: this.templateType === TemplateType.Schedule.type ? this.scheduledFrequency : undefined,
             scheduledStartDate: this.templateType === TemplateType.Schedule.type && this.scheduledStartDate ? this.scheduledStartDate : undefined,
             scheduledEndDate: this.templateType === TemplateType.Schedule.type && this.scheduledEndDate ? this.scheduledEndDate : undefined,
+            scheduledTime: this.templateType === TemplateType.Schedule.type ? this.scheduledTime : undefined,
             timeZone: this.templateType === TemplateType.Schedule.type ? this.timeZone : undefined,
             utcOffset: this.templateType === TemplateType.Schedule.type ? this.utcOffset : undefined
         };
@@ -106,6 +111,7 @@ export class TransactionTemplate extends Transaction implements TransactionTempl
             undefined, // scheduledStartDate
             undefined, // scheduledEndDate
             undefined, // scheduledAt
+            undefined, // scheduledTime
             transaction.tagIds,
             transaction.comment,
             true,
@@ -133,6 +139,7 @@ export class TransactionTemplate extends Transaction implements TransactionTempl
             templateResponse.scheduledStartDate ?? undefined,
             templateResponse.scheduledEndDate ?? undefined,
             templateResponse.scheduledAt,
+            templateResponse.scheduledTime ?? 0,
             templateResponse.tagIds,
             templateResponse.comment,
             true, // editable
@@ -168,6 +175,7 @@ export interface TransactionTemplateCreateRequest {
     readonly scheduledFrequency?: string;
     readonly scheduledStartDate?: string;
     readonly scheduledEndDate?: string;
+    readonly scheduledTime?: number;
     readonly timeZone?: string;
     readonly utcOffset?: number;
     readonly clientSessionId: string;
@@ -189,6 +197,7 @@ export interface TransactionTemplateModifyRequest {
     readonly scheduledFrequency?: string;
     readonly scheduledStartDate?: string;
     readonly scheduledEndDate?: string;
+    readonly scheduledTime?: number;
     readonly timeZone?: string;
     readonly utcOffset?: number;
 }
@@ -219,6 +228,7 @@ export interface TransactionTemplateInfoResponse extends TransactionInfoResponse
     readonly scheduledStartDate?: TextualYearMonthDay;
     readonly scheduledEndDate?: TextualYearMonthDay;
     readonly scheduledAt?: number;
+    readonly scheduledTime?: number;
     readonly timeZone?: string;
     readonly displayOrder: number;
     readonly hidden: boolean;

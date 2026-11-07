@@ -6,6 +6,7 @@ import {
 } from '@/core/budget.ts';
 import {
     buildBudgetMonthSummary,
+    buildBudgetProgressSummary,
     createDefaultBudgetMonthPlan,
     getBudgetExcludedIds,
     getBudgetFixedExpenseDaySummaries,
@@ -320,6 +321,68 @@ describe('buildBudgetMonthSummary', () => {
 
         expect(summary.days[1]?.status).toBe(BudgetDayStatus.Future);
         expect(summary.overspentDays).toBe(0);
+    });
+});
+
+describe('buildBudgetProgressSummary', () => {
+    it('summarizes expected and actual spending from the start of the month to today', () => {
+        const summary = buildBudgetMonthSummary(
+            createPlan({ monthlyBudget: '3000' }),
+            { '2026-11-01': '150', '2026-11-02': '150' },
+            '2026-11',
+            '2026-11-02'
+        );
+        const progress = buildBudgetProgressSummary(summary, '2026-11', '2026-11-02');
+
+        expect(progress).not.toBeNull();
+        expect(progress?.elapsedDays).toBe(2);
+        expect(progress?.expectedAmount).toBe('198.27');
+        expect(progress?.actualAmount).toBe('300');
+        expect(progress?.differenceAmount).toBe('101.73');
+    });
+
+    it('returns a negative difference when spending is under the budget', () => {
+        const summary = buildBudgetMonthSummary(
+            createPlan({ monthlyBudget: '3000' }),
+            { '2026-11-01': '50' },
+            '2026-11',
+            '2026-11-02'
+        );
+        const progress = buildBudgetProgressSummary(summary, '2026-11', '2026-11-02');
+
+        expect(progress).not.toBeNull();
+        expect(progress?.expectedAmount).toBe('201.72');
+        expect(progress?.actualAmount).toBe('50');
+        expect(progress?.differenceAmount).toBe('-151.72');
+    });
+
+    it('returns null when there are no elapsed days', () => {
+        const summary = buildBudgetMonthSummary(createPlan({ monthlyBudget: '3000' }), {}, '2026-12', '2026-11-07');
+
+        expect(summary.elapsedDays).toBe(0);
+        expect(buildBudgetProgressSummary(summary, '2026-12', '2026-11-07')).toBeNull();
+    });
+
+    it('returns null when the expected amount is zero', () => {
+        const summary = buildBudgetMonthSummary(createPlan({ monthlyBudget: '0' }), {}, '2026-11', '2026-11-01');
+
+        expect(summary.elapsedDays).toBe(1);
+        expect(buildBudgetProgressSummary(summary, '2026-11', '2026-11-01')).toBeNull();
+    });
+
+    it('covers the whole month for a past month', () => {
+        const summary = buildBudgetMonthSummary(
+            createPlan({ monthlyBudget: '3000' }),
+            { '2026-10-15': '200' },
+            '2026-10',
+            '2026-11-08'
+        );
+        const progress = buildBudgetProgressSummary(summary, '2026-10', '2026-11-08');
+
+        expect(progress).not.toBeNull();
+        expect(progress?.elapsedDays).toBe(31);
+        expect(progress?.actualAmount).toBe(summary.monthUsed);
+        expect(progress?.differenceAmount).not.toBe('0');
     });
 });
 

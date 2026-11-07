@@ -401,9 +401,31 @@ func GetMinimumTimezoneOffsetMinutes(unixTime int64, location *time.Location) in
 
 // GetScheduledTransactionScheduledAt returns the scheduled time using the minimum offset in the creation year
 func GetScheduledTransactionScheduledAt(createdUnixTime int64, location *time.Location) int16 {
-	referenceOffset := GetMinimumTimezoneOffsetMinutes(createdUnixTime, location)
-	minutesElapsedOfDayInUtc := (24*60 - int(referenceOffset)) % (24 * 60)
+	return GetScheduledTransactionScheduledAtWithLocalTime(0, createdUnixTime, location)
+}
+
+// GetScheduledTransactionScheduledAtWithLocalTime converts the local time minutes of day in the template timezone to the scheduled time using the minimum offset in the reference year
+func GetScheduledTransactionScheduledAtWithLocalTime(localMinutes int16, referenceUnixTime int64, location *time.Location) int16 {
+	referenceOffset := int(GetMinimumTimezoneOffsetMinutes(referenceUnixTime, location))
+	minutesElapsedOfDayInUtc := (int(localMinutes) - referenceOffset) % (24 * 60)
+
+	if minutesElapsedOfDayInUtc < 0 {
+		minutesElapsedOfDayInUtc += 24 * 60
+	}
+
 	return int16(minutesElapsedOfDayInUtc)
+}
+
+// GetScheduledTransactionLocalTime converts the scheduled time to the local time minutes of day in the template timezone using the minimum offset in the reference year
+func GetScheduledTransactionLocalTime(scheduledAt int16, referenceUnixTime int64, location *time.Location) int16 {
+	referenceOffset := int(GetMinimumTimezoneOffsetMinutes(referenceUnixTime, location))
+	localMinutes := (int(scheduledAt) + referenceOffset) % (24 * 60)
+
+	if localMinutes < 0 {
+		localMinutes += 24 * 60
+	}
+
+	return int16(localMinutes)
 }
 
 // GetScheduledTransactionFinalTime returns the final time of scheduled transaction in given location

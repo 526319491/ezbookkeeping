@@ -57,6 +57,15 @@
                         <span>{{ tt('Flexible Budget Today') }} <b>{{ formatAmount(summary.flexibleToday) }}</b></span>
                         <span class="budget-status-chip" :class="'budget-status-' + todayStatus">{{ getDayStatusText(todayStatus) }}</span>
                     </div>
+                    <div class="budget-progress-row" v-if="budgetProgress">
+                        <span class="budget-progress-label">{{ budgetProgressPeriodLabel }}</span>
+                        <span class="budget-progress-value" :class="'budget-progress-' + getBudgetProgressType(budgetProgress)">
+                            {{ getBudgetProgressText(budgetProgress) }}
+                        </span>
+                    </div>
+                    <small class="budget-progress-detail" v-if="budgetProgress">
+                        {{ getBudgetProgressDetailText(budgetProgress) }}
+                    </small>
                 </f7-card-content>
             </f7-card>
         </f7-block>
@@ -292,6 +301,11 @@ const {
     formatPercent,
     formatTransactionTime,
     getDayStatusText,
+    budgetProgress,
+    budgetProgressPeriodLabel,
+    getBudgetProgressText,
+    getBudgetProgressDetailText,
+    getBudgetProgressType,
     isToday,
 } = useBudgetPlannerPageBase();
 
@@ -493,6 +507,41 @@ if (isUserLogined() && isUserUnlocked()) {
 .budget-status-no_data,
 .budget-status-future {
     background: #8e8e93;
+}
+
+.budget-progress-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.budget-progress-label {
+    color: var(--f7-text-color-secondary);
+    font-size: 0.8rem;
+}
+
+.budget-progress-value {
+    font-size: 0.8rem;
+}
+
+.budget-progress-detail {
+    display: block;
+    color: var(--f7-text-color-secondary);
+    font-size: 0.7rem;
+}
+
+.budget-progress-overspent {
+    color: #d9534f;
+}
+
+.budget-progress-saved {
+    color: #5cb85c;
+}
+
+.budget-progress-on_budget {
+    color: var(--f7-text-color-secondary);
 }
 
 .budget-day-today {

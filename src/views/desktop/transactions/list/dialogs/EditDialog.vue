@@ -284,6 +284,18 @@
                                         v-model:type="transaction.scheduledFrequencyType"
                                         v-model="transaction.scheduledFrequency" />
                                 </v-col>
+                                <v-col cols="12" md="6" v-if="type === TransactionEditPageType.Template && transaction instanceof TransactionTemplate && transaction.templateType === TemplateType.Schedule.type">
+                                    <v-select
+                                        persistent-placeholder
+                                        :readonly="mode === TransactionEditPageMode.View"
+                                        :disabled="loading || submitting || recognizing"
+                                        :label="tt('Scheduled Time')"
+                                        :items="allScheduledTimeOptions"
+                                        item-title="displayName"
+                                        item-value="type"
+                                        :model-value="transaction.scheduledTime ?? 0"
+                                        @update:model-value="transaction.scheduledTime = Number($event)" />
+                                </v-col>
                                 <v-col cols="12" md="6" v-if="type === TransactionEditPageType.Transaction || (type === TransactionEditPageType.Template && transaction instanceof TransactionTemplate && transaction.templateType === TemplateType.Schedule.type)">
                                     <v-autocomplete
                                         class="transaction-edit-timezone"
@@ -645,6 +657,7 @@ const {
     transactionDisplayTimezone,
     transactionTimezoneTimeDifference,
     geoLocationStatusInfo,
+    allScheduledTimeOptions,
     transactionDescriptionTitle,
     inputEmptyProblemMessage,
     inputIsEmpty,

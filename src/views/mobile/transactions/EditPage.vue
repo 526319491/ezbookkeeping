@@ -280,6 +280,26 @@
             </f7-list-item>
 
             <f7-list-item
+                class="list-item-with-header-and-title"
+                link="#" no-chevron
+                :class="{ 'readonly': mode === TransactionEditPageMode.View }"
+                :header="tt('Scheduled Time')"
+                :title="transactionDisplayScheduledTime"
+                @click="showScheduledTimePopup = true"
+                v-if="pageTypeAndMode?.type === TransactionEditPageType.Template && transaction instanceof TransactionTemplate && transaction.templateType === TemplateType.Schedule.type"
+            >
+                <list-item-selection-popup value-type="item"
+                                           key-field="type" value-field="type"
+                                           title-field="displayName"
+                                           :title="tt('Scheduled Time')"
+                                           :items="allScheduledTimeOptions"
+                                           :model-value="transaction.scheduledTime ?? 0"
+                                           v-model:show="showScheduledTimePopup"
+                                           @update:model-value="transaction.scheduledTime = Number($event)">
+                </list-item-selection-popup>
+            </f7-list-item>
+
+            <f7-list-item
                 class="transaction-edit-datetime list-item-with-header-and-title"
                 link="#" no-chevron
                 :class="{ 'readonly': mode === TransactionEditPageMode.View }"
@@ -642,9 +662,11 @@ const {
     transactionDisplayTimezone,
     transactionTimezoneTimeDifference,
     geoLocationStatusInfo,
+    allScheduledTimeOptions,
     transactionDescriptionTitle,
     inputEmptyProblemMessage,
     inputIsEmpty,
+    getScheduledTimeText,
     setTransactionModel,
     updateTransactionModelFromRecognizedResponse,
     updateTransactionModelByAfterSaveAction,
@@ -684,6 +706,7 @@ const showSourceAccountSheet = ref<boolean>(false);
 const showDestinationAccountSheet = ref<boolean>(false);
 const showTransactionDateTimeSheet = ref<boolean>(false);
 const showTransactionScheduledFrequencySheet = ref<boolean>(false);
+const showScheduledTimePopup = ref<boolean>(false);
 const showScheduledStartDateSheet = ref<boolean>(false);
 const showScheduledEndDateSheet = ref<boolean>(false);
 const showGeoLocationMapSheet = ref<boolean>(false);
@@ -848,6 +871,20 @@ const transactionDisplayScheduledFrequency = computed<string>(() => {
     } else {
         return '';
     }
+});
+
+const transactionDisplayScheduledTime = computed<string>(() => {
+    if (pageTypeAndMode?.type !== TransactionEditPageType.Template) {
+        return '';
+    }
+
+    const template = transaction.value as TransactionTemplate;
+
+    if (template.templateType !== TemplateType.Schedule.type) {
+        return '';
+    }
+
+    return getScheduledTimeText(template.scheduledTime);
 });
 
 const transactionDisplayScheduledStartDate = computed<string>(() => {

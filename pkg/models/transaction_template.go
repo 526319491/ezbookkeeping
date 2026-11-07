@@ -86,6 +86,7 @@ type TransactionTemplateCreateRequest struct {
 	ScheduledFrequency         *string                           `json:"scheduledFrequency" binding:"omitempty"`
 	ScheduledStartDate         *string                           `json:"scheduledStartDate" binding:"omitempty"`
 	ScheduledEndDate           *string                           `json:"scheduledEndDate" binding:"omitempty"`
+	ScheduledTime              *int16                            `json:"scheduledTime" binding:"omitempty,min=0,max=1439"`
 	ScheduledTimezoneName      *string                           `json:"timeZone" binding:"omitempty,min=3,max=100"`
 	ScheduledTimezoneUtcOffset *int16                            `json:"utcOffset" binding:"omitempty,min=-720,max=840"`
 	ClientSessionId            string                            `json:"clientSessionId"`
@@ -114,6 +115,7 @@ type TransactionTemplateModifyRequest struct {
 	ScheduledFrequency         *string                           `json:"scheduledFrequency" binding:"omitempty"`
 	ScheduledStartDate         *string                           `json:"scheduledStartDate" binding:"omitempty"`
 	ScheduledEndDate           *string                           `json:"scheduledEndDate" binding:"omitempty"`
+	ScheduledTime              *int16                            `json:"scheduledTime" binding:"omitempty,min=0,max=1439"`
 	ScheduledTimezoneName      *string                           `json:"timeZone" binding:"omitempty,min=3,max=100"`
 	ScheduledTimezoneUtcOffset *int16                            `json:"utcOffset" binding:"omitempty,min=-720,max=840"`
 }
@@ -149,6 +151,7 @@ type TransactionTemplateInfoResponse struct {
 	ScheduledStartDate     *string                           `json:"scheduledStartDate" binding:"omitempty"`
 	ScheduledEndDate       *string                           `json:"scheduledEndDate" binding:"omitempty"`
 	ScheduledAt            *int16                            `json:"scheduledAt,omitempty"`
+	ScheduledTime          *int16                            `json:"scheduledTime,omitempty"`
 	ScheduledTimezoneName  string                            `json:"timeZone,omitempty"`
 	DisplayOrder           int32                             `json:"displayOrder"`
 	Hidden                 bool                              `json:"hidden"`
@@ -196,6 +199,9 @@ func (t *TransactionTemplate) ToTransactionTemplateInfoResponse(serverUtcOffset 
 				templateTimezone = location
 			}
 		}
+
+		scheduledTime := utils.GetScheduledTransactionLocalTime(t.ScheduledAt, t.CreatedUnixTime, templateTimezone)
+		response.ScheduledTime = &scheduledTime
 
 		if t.ScheduledStartTime != nil {
 			startDate := utils.FormatUnixTimeToLongDate(*t.ScheduledStartTime, templateTimezone)

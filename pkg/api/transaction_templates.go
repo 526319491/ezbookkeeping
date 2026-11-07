@@ -276,6 +276,10 @@ func (a *TransactionTemplatesApi) TemplateModifyHandler(c *core.WebContext) (any
 			templateModifyReq.ScheduledTimezoneUtcOffset == nil {
 			return nil, errs.ErrTransactionTimeZoneInvalid
 		}
+
+		if templateModifyReq.ScheduledTime != nil && *templateModifyReq.ScheduledTime%15 != 0 {
+			return nil, errs.ErrScheduledTransactionTimeInvalid
+		}
 	}
 
 	if len(templateModifyReq.TagIds) > maximumTagsCountOfTemplate {
@@ -310,7 +314,11 @@ func (a *TransactionTemplatesApi) TemplateModifyHandler(c *core.WebContext) (any
 			return nil, errs.ErrTransactionTimeZoneInvalid
 		}
 
-		newTemplate.ScheduledAt = utils.GetScheduledTransactionScheduledAt(template.CreatedUnixTime, location)
+		if templateModifyReq.ScheduledTime != nil {
+			newTemplate.ScheduledAt = utils.GetScheduledTransactionScheduledAtWithLocalTime(*templateModifyReq.ScheduledTime, template.CreatedUnixTime, location)
+		} else {
+			newTemplate.ScheduledAt = utils.GetScheduledTransactionScheduledAt(template.CreatedUnixTime, location)
+		}
 
 		if templateModifyReq.ScheduledStartDate != nil {
 			startTime, err := utils.ParseFromLongDateFirstTimeInTimezone(*templateModifyReq.ScheduledStartDate, location)
@@ -531,7 +539,15 @@ func (a *TransactionTemplatesApi) createNewTemplateModel(c *core.WebContext, uid
 			return nil, errs.ErrTransactionTimeZoneInvalid
 		}
 
-		template.ScheduledAt = utils.GetScheduledTransactionScheduledAt(time.Now().Unix(), location)
+		template.ScheduledAt = utils.GetScheduledTransactionScheduledAtWithLocalTime(0, time.Now().Unix(), location)
+
+		if templateCreateReq.ScheduledTime != nil {
+			if *templateCreateReq.ScheduledTime%15 != 0 {
+				return nil, errs.ErrScheduledTransactionTimeInvalid
+			}
+
+			template.ScheduledAt = utils.GetScheduledTransactionScheduledAtWithLocalTime(*templateCreateReq.ScheduledTime, time.Now().Unix(), location)
+		}
 
 		if templateCreateReq.ScheduledStartDate != nil {
 			startTime, err := utils.ParseFromLongDateFirstTimeInTimezone(*templateCreateReq.ScheduledStartDate, location)

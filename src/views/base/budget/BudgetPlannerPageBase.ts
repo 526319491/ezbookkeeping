@@ -9,6 +9,7 @@ import {
     type BudgetDaySummary,
     type BudgetDayTransaction,
     type BudgetFixedExpense,
+    type BudgetProgressSummary,
 } from '@/core/budget.ts';
 import type { WeekDayValue, Year0BasedMonth } from '@/core/datetime.ts';
 import type { BigDecimal } from '@/core/numeral.ts';
@@ -18,6 +19,7 @@ import {
     parseDateTimeFromUnixTimeWithTimezoneOffset,
 } from '@/lib/datetime.ts';
 import {
+    buildBudgetProgressSummary,
     getCurrentYearMonth,
     parseBudgetAmount,
     parseYearMonth,
@@ -90,6 +92,9 @@ export function useBudgetPlannerPageBase() {
     const dayTransactionsLoading = ref<boolean>(false);
     const dayTransactionsError = ref<unknown | null>(null);
     let dayTransactionsRequestId = 0;
+
+    const budgetProgress = computed<BudgetProgressSummary | null>(() => buildBudgetProgressSummary(summary.value, budgetStore.selectedYearMonth, budgetStore.today));
+    const budgetProgressPeriodLabel = computed<string>(() => isCurrentMonth.value ? tt('As of Today') : tt('Whole Month'));
 
     function reload(force: boolean = false): Promise<void> {
         return budgetStore.loadCurrentMonthData({ force: force });
@@ -231,6 +236,34 @@ export function useBudgetPlannerPageBase() {
         return weekDay ? weekDay.displayName : '';
     }
 
+    function getBudgetProgressText(progress: BudgetProgressSummary): string {
+        const difference = parseBudgetAmount(progress.differenceAmount);
+
+        if (difference.isPositive()) {
+            return `${tt('Overspent')} ${formatAmount(difference.abs().toString())}`;
+        } else if (difference.isNegative()) {
+            return `${tt('Saved')} ${formatAmount(difference.abs().toString())}`;
+        } else {
+            return tt('On Budget');
+        }
+    }
+
+    function getBudgetProgressDetailText(progress: BudgetProgressSummary): string {
+        return `${tt('Expected Spending')} ${formatAmount(progress.expectedAmount)} · ${tt('Actual Spending')} ${formatAmount(progress.actualAmount)}`;
+    }
+
+    function getBudgetProgressType(progress: BudgetProgressSummary): string {
+        const difference = parseBudgetAmount(progress.differenceAmount);
+
+        if (difference.isPositive()) {
+            return 'overspent';
+        } else if (difference.isNegative()) {
+            return 'saved';
+        } else {
+            return 'on_budget';
+        }
+    }
+
     function getDayStatusText(status: BudgetDayStatus): string {
         if (status === BudgetDayStatus.Overspent) {
             return tt('Overspent');
@@ -287,6 +320,8 @@ export function useBudgetPlannerPageBase() {
         dayTransactions,
         dayTransactionsLoading,
         dayTransactionsError,
+        budgetProgress,
+        budgetProgressPeriodLabel,
         // functions
         reload,
         loadDayTransactions,
@@ -308,6 +343,9 @@ export function useBudgetPlannerPageBase() {
         formatPercent,
         formatTransactionTime,
         getWeekdayName,
+        getBudgetProgressText,
+        getBudgetProgressDetailText,
+        getBudgetProgressType,
         getDayStatusText,
         getDayStatusColor,
         isToday,

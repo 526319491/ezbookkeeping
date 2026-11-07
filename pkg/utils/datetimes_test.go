@@ -1088,6 +1088,107 @@ func TestGetScheduledTransactionScheduledAt_CreationYearBoundary(t *testing.T) {
 	assert.Equal(t, expectedValue, actualValue)
 }
 
+func TestGetScheduledTransactionScheduledAtWithLocalTime_FixedTimezone(t *testing.T) {
+	referenceUnixTime := time.Now().Unix()
+
+	timezone := time.FixedZone("Test Timezone", 0)
+
+	// midnight keeps the existing default behavior
+	expectedValue := int16(0)
+	actualValue := GetScheduledTransactionScheduledAtWithLocalTime(0, referenceUnixTime, timezone)
+	assert.Equal(t, expectedValue, actualValue)
+
+	expectedValue = int16(495)
+	actualValue = GetScheduledTransactionScheduledAtWithLocalTime(8*60+15, referenceUnixTime, timezone)
+	assert.Equal(t, expectedValue, actualValue)
+
+	timezone = time.FixedZone("Test Timezone", 480*60)
+
+	expectedValue = int16(15)
+	actualValue = GetScheduledTransactionScheduledAtWithLocalTime(8*60+15, referenceUnixTime, timezone)
+	assert.Equal(t, expectedValue, actualValue)
+
+	// local midnight with UTC+8 is 16:00 UTC of the previous day
+	expectedValue = int16(960)
+	actualValue = GetScheduledTransactionScheduledAtWithLocalTime(0, referenceUnixTime, timezone)
+	assert.Equal(t, expectedValue, actualValue)
+
+	timezone = time.FixedZone("Test Timezone", -300*60)
+
+	// local 08:15 with UTC-5 is 13:15 UTC
+	expectedValue = int16(795)
+	actualValue = GetScheduledTransactionScheduledAtWithLocalTime(8*60+15, referenceUnixTime, timezone)
+	assert.Equal(t, expectedValue, actualValue)
+
+	// local 00:00 with UTC-5 wraps to the previous UTC day
+	expectedValue = int16(300)
+	actualValue = GetScheduledTransactionScheduledAtWithLocalTime(0, referenceUnixTime, timezone)
+	assert.Equal(t, expectedValue, actualValue)
+
+	timezone = time.FixedZone("Test Timezone", 720*60)
+
+	// local 00:45 with UTC+12 wraps over midnight to the previous UTC day (12:45 UTC)
+	expectedValue = int16(765)
+	actualValue = GetScheduledTransactionScheduledAtWithLocalTime(45, referenceUnixTime, timezone)
+	assert.Equal(t, expectedValue, actualValue)
+}
+
+func TestGetScheduledTransactionLocalTime_FixedTimezone(t *testing.T) {
+	referenceUnixTime := time.Now().Unix()
+
+	timezone := time.FixedZone("Test Timezone", 480*60)
+
+	// scheduledAt 0 is 08:00 local with UTC+8
+	expectedValue := int16(8*60)
+	actualValue := GetScheduledTransactionLocalTime(0, referenceUnixTime, timezone)
+	assert.Equal(t, expectedValue, actualValue)
+
+	expectedValue = int16(8*60+15)
+	actualValue = GetScheduledTransactionLocalTime(15, referenceUnixTime, timezone)
+	assert.Equal(t, expectedValue, actualValue)
+
+	// scheduledAt 960 is local midnight with UTC+8
+	expectedValue = int16(0)
+	actualValue = GetScheduledTransactionLocalTime(960, referenceUnixTime, timezone)
+	assert.Equal(t, expectedValue, actualValue)
+
+	timezone = time.FixedZone("Test Timezone", -300*60)
+
+	expectedValue = int16(8*60+15)
+	actualValue = GetScheduledTransactionLocalTime(795, referenceUnixTime, timezone)
+	assert.Equal(t, expectedValue, actualValue)
+
+	expectedValue = int16(0)
+	actualValue = GetScheduledTransactionLocalTime(300, referenceUnixTime, timezone)
+	assert.Equal(t, expectedValue, actualValue)
+
+	timezone = time.FixedZone("Test Timezone", 720*60)
+
+	expectedValue = int16(45)
+	actualValue = GetScheduledTransactionLocalTime(765, referenceUnixTime, timezone)
+	assert.Equal(t, expectedValue, actualValue)
+}
+
+func TestGetScheduledTransactionScheduledTimeAndLocalTimeRoundTrip(t *testing.T) {
+	referenceUnixTime := time.Now().Unix()
+
+	timezones := []*time.Location{
+		time.FixedZone("Test Timezone", 0),
+		time.FixedZone("Test Timezone", 480*60),
+		time.FixedZone("Test Timezone", 570*60),
+		time.FixedZone("Test Timezone", -300*60),
+		time.FixedZone("Test Timezone", -720*60),
+	}
+
+	for _, timezone := range timezones {
+		for minutes := int16(0); minutes < 24*60; minutes += 15 {
+			scheduledAt := GetScheduledTransactionScheduledAtWithLocalTime(minutes, referenceUnixTime, timezone)
+			actualValue := GetScheduledTransactionLocalTime(scheduledAt, referenceUnixTime, timezone)
+			assert.Equal(t, minutes, actualValue)
+		}
+	}
+}
+
 func TestGetScheduledTransactionFinalTime_FixedTimezone(t *testing.T) {
 	referenceUnixTime := time.Now().Unix()
 

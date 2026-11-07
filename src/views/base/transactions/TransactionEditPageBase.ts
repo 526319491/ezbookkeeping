@@ -12,6 +12,7 @@ import { useExchangeRatesStore } from '@/stores/exchangeRates.ts';
 
 import type { BigDecimal, NumeralSystem } from '@/core/numeral.ts';
 import type { WeekDayValue } from '@/core/datetime.ts';
+import type { TypeAndDisplayName } from '@/core/base.ts';
 import type { LocalizedTimezoneInfo } from '@/core/timezone.ts';
 import { ImageUploadQualityType } from '@/core/image.ts';
 import { TransactionType, TransactionQuickAddButtonActionType } from '@/core/transaction.ts';
@@ -36,6 +37,11 @@ import {
     parseBigDecimal,
     getExchangedAmountByRate
 } from '@/lib/numeral.ts';
+
+import {
+    getScheduledTimeMinutes,
+    getScheduledTimeDateTime
+} from '@/lib/template.ts';
 
 import {
     getUtcOffsetByUtcOffsetMinutes,
@@ -82,6 +88,7 @@ export function useTransactionEditPageBase(type: TransactionEditPageType, initMo
         getTimezoneDifferenceDisplayText,
         formatAmountToLocalizedNumeralsWithCurrency,
         formatNumberToLocalizedNumerals,
+        formatDateTimeToShortTime,
         getAdaptiveAmountRate,
         getCategorizedAccountsWithDisplayBalance
     } = useI18n();
@@ -406,6 +413,17 @@ export function useTransactionEditPageBase(type: TransactionEditPageType, initMo
         return type === TransactionEditPageType.Template && item instanceof TransactionTemplate && item.templateType === TemplateType.Schedule.type;
     }
 
+    const allScheduledTimeOptions = computed<TypeAndDisplayName[]>(() => {
+        return getScheduledTimeMinutes().map(minutes => ({
+            type: minutes,
+            displayName: formatDateTimeToShortTime(getScheduledTimeDateTime(minutes))
+        }));
+    });
+
+    function getScheduledTimeText(minutes: number | undefined): string {
+        return formatDateTimeToShortTime(getScheduledTimeDateTime(minutes ?? 0));
+    }
+
     function createNewTransactionModel(transactionType?: number): Transaction | TransactionTemplate {
         const now: number = getCurrentUnixTimeForNewTransaction();
         const currentTimezone: string = settingsStore.appSettings.timeZone;
@@ -629,10 +647,12 @@ export function useTransactionEditPageBase(type: TransactionEditPageType, initMo
         transactionDisplayTimezone,
         transactionTimezoneTimeDifference,
         geoLocationStatusInfo,
+        allScheduledTimeOptions,
         transactionDescriptionTitle,
         inputEmptyProblemMessage,
         inputIsEmpty,
         // functions
+        getScheduledTimeText,
         createNewTransactionModel,
         setTransactionModel,
         updateTransactionModelFromRecognizedResponse,

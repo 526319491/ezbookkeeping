@@ -647,6 +647,10 @@ export function getYearMonthDayDateTime(year: number, month: number, day: number
     return MomentDateTime.ofFullDateTime(year, month, day, 0, 0, 0, 0);
 }
 
+export function getYearMonthDayTimeDateTime(year: number, month: number, day: number, hour: number, minute: number): DateTime {
+    return MomentDateTime.ofFullDateTime(year, month, day, hour, minute, 0, 0);
+}
+
 export function parseDateTimeFromUnixTime(unixTime: number): DateTime {
     return MomentDateTime.ofUnixTime(unixTime);
 }
